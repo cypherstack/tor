@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 /// A SOCKS5 socket.
 ///
@@ -12,10 +13,10 @@ import 'dart:io';
 /// Attributes:
 ///  - [proxyHost]: The host of the SOCKS5 proxy server.
 ///  - [proxyPort]: The port of the SOCKS5 proxy server.
-///  - [_socksSocket]: The underlying [Socket] that connects to the SOCKS5 proxy
-///  server.
+///  - [_socksSocketWrapper]: The underlying [Socket] that connects to the SOCKS5
+///  proxy, wrapped so SSL connections can be upgraded.
 ///  - [_responseController]: A [StreamController] that listens to the
-///  [_socksSocket] and broadcasts the response.
+///  [_socksSocketWrapper] and broadcasts the response.
 ///
 /// Methods:
 /// - connect: Connects to the SOCKS5 proxy server.
@@ -59,10 +60,10 @@ class SOCKSSocket {
   /// The port of the SOCKS5 proxy server.
   final int proxyPort;
 
-  /// The underlying Socket that connects to the SOCKS5 proxy server.
-  late final Socket _socksSocket;
+  /// The underlying Socket that connects to the SOCKS5 proxy server, wrapped so SSL connections can be upgraded.
+  final SocketWrapper _socksSocketWrapper = SocketWrapper();
 
-  /// A StreamController that listens to the _socksSocket and broadcasts
+  /// A StreamController that listens to the _socksSocketWrapper and broadcasts
   final StreamController<List<int>> _responseController =
       StreamController.broadcast();
 
@@ -113,13 +114,13 @@ class SOCKSSocket {
   ///   A Future that resolves to void.
   Future<void> _init() async {
     // Connect to the SOCKS proxy server.
-    _socksSocket = await Socket.connect(
+    _socksSocketWrapper.socket = await Socket.connect(
       proxyHost,
       proxyPort,
     );
 
     // Listen to the socket.
-    _socksSocket.listen(
+    _socksSocketWrapper.listen(
       (data) {
         // Add the data to the response controller.
         _responseController.add(data);
@@ -147,7 +148,7 @@ class SOCKSSocket {
   ///  A Future that resolves to void.
   Future<void> connect() async {
     // Greeting and method selection.
-    _socksSocket.add([0x05, 0x01, 0x00]);
+    _socksSocketWrapper.add([0x05, 0x01, 0x00]);
 
     // Wait for server response.
     var response = await _responseController.stream.first;
@@ -181,7 +182,7 @@ class SOCKSSocket {
     ];
 
     // Send the connect command to the SOCKS proxy server.
-    _socksSocket.add(request);
+    _socksSocketWrapper.add(request);
 
     // Wait for server response.
     var response = await _responseController.stream.first;
@@ -192,14 +193,17 @@ class SOCKSSocket {
           'socks_socket.connectTo(): Failed to connect to target through SOCKS5 proxy.');
     }
 
-    // Upgrade to SSL if needed
+    // Upgrade to SSL if needed.
     if (sslEnabled) {
       var secureSocket = await SecureSocket.secure(
-        _socksSocket,
+        _socksSocketWrapper.socket!,
         host: domain,
-        // onBadCertificate: (_) => true, // Uncomment this to bypass certificate validation (NOT recommended for production).
+        onBadCertificate: (_) =>
+            true, // Bypass certificate validation (NOT recommended for production).
       );
-      _socksSocket = secureSocket;
+      _socksSocketWrapper.replace(secureSocket);
+      print("Upgraded to SSL.");
+      sendServerFeaturesCommand();
     }
   }
 
@@ -217,7 +221,7 @@ class SOCKSSocket {
 
     // Write the data to the socket.
     List<int> data = utf8.encode(object.toString());
-    _socksSocket.add(data);
+    _socksSocketWrapper.add(data);
   }
 
   /// Sends the server.features command to the proxy server.
@@ -229,12 +233,14 @@ class SOCKSSocket {
   /// Returns:
   ///   A Future that resolves to void.
   Future<void> sendServerFeaturesCommand() async {
+    print("Sending server.features command.");
+
     // The server.features command.
     const String command =
         '{"jsonrpc":"2.0","id":"0","method":"server.features","params":[]}';
 
     // Send the command to the proxy server.
-    _socksSocket.writeln(command);
+    _socksSocketWrapper.socket?.writeln(command);
 
     // Wait for the response from the proxy server.
     var responseData = await _responseController.stream.first;
@@ -247,8 +253,37 @@ class SOCKSSocket {
   ///  A Future that resolves to void.
   Future<void> close() async {
     // Ensure all data is sent before closing.
-    await _socksSocket.flush();
+    await _socksSocketWrapper.flush();
     await _responseController.close();
-    return await _socksSocket.close();
+    return await _socksSocketWrapper.close();
+  }
+}
+
+class SocketWrapper {
+  late Socket socket;
+
+  void listen(void Function(Uint8List) onData,
+      {void Function(Object)? onError, void Function()? onDone}) {
+    socket.listen(onData, onError: onError, onDone: onDone);
+  }
+
+  void writeln(Object object) {
+    socket.writeln(object);
+  }
+
+  void add(List<int> data) {
+    socket.add(data);
+  }
+
+  Future<void> flush() async {
+    return socket.flush();
+  }
+
+  Future<void> close() async {
+    return socket.close();
+  }
+
+  void replace(Socket newSocket) {
+    this.socket = newSocket;
   }
 }
