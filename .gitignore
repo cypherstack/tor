@@ -1,2 +1,7 @@
+.idea/
+.dart_tool/
+
 native/tor-ffi/target/*
 /macos/libtor_ffi.dylib
+/android/src/main/jniLibs
+/scripts/android/build
