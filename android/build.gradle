@@ -25,6 +25,8 @@ rootProject.allprojects {
 apply plugin: 'com.android.library'
 
 android {
+    ndkVersion = "23.1.7779620"
+
     if (project.android.hasProperty("namespace")) {
         namespace 'com.cypherstack.tor_ffi_plugin'
     }
@@ -38,6 +40,7 @@ android {
     }
 
     defaultConfig {
+        ndkVersion = "23.1.7779620"
         minSdkVersion 16
     }
 }

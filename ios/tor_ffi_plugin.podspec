@@ -16,7 +16,7 @@ A new Flutter FFI plugin project.
   s.source           = { :path => '.' }
   s.source_files     = 'Classes/**/*'
   s.dependency 'Flutter'
-  s.platform = :ios, '9.0'
+  s.platform = :ios, '15.0'
 
   s.script_phase = {
     :name => 'Build Rust library',
@@ -32,6 +32,10 @@ A new Flutter FFI plugin project.
     'DEFINES_MODULE' => 'YES',
     # Flutter.framework does not contain a i386 slice.
     'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386',
+    'EXCLUDED_ARCHS' => 'armv7',
     'OTHER_LDFLAGS' => '-force_load ${BUILT_PRODUCTS_DIR}/libtor_ffi_plugin.a',
+  }
+  s.user_target_xcconfig = {
+     'EXCLUDED_ARCHS' => 'armv7',
   }
 end
