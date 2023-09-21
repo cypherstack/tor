@@ -4,8 +4,7 @@ import 'dart:io';
 
 /// A SOCKS5 socket.
 ///
-/// This class is a wrapper around the Socket class that implements the
-/// SOCKS5 protocol.  It supports SSL and non-SSL connections.
+/// A Dart 3 Socket wrapper that implements the SOCKS5 protocol.  Now with SSL!
 ///
 /// Properties:
 ///  - [proxyHost]: The host of the SOCKS5 proxy server.
