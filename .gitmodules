@@ -1,0 +1,3 @@
+[submodule "lib/socks_socket"]
+	path = lib/socks_socket
+	url = git@github.com:cypherstack/socks_socket
