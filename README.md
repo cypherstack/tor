@@ -12,7 +12,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 ### [Install rust](https://www.rust-lang.org/tools/install)
 
-Use `rustup`, not `homebrew`.
+Install 1.73 or newer.  Use `rustup`, not `homebrew`.
 
 ### Install cargo ndk
 
