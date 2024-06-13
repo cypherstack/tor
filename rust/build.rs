@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Foundation Devices Inc.
+// SPDX-FileCopyrightText: 2023 Foundation Devices Inc.
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -15,7 +15,7 @@ fn main() {
     let package_name = env::var("CARGO_PKG_NAME").unwrap();
 
     let output_file = target_dir()
-        .join(format!("{}.hpp", package_name))
+        .join(format!("{}.h", package_name))
         .display()
         .to_string();
 
@@ -24,9 +24,9 @@ fn main() {
         ..Default::default()
     };
 
-    cbindgen::generate_with_config(&crate_dir, config)
+    cbindgen::generate_with_config(crate_dir, config)
         .unwrap()
-        .write_to_file(&output_file);
+        .write_to_file(output_file);
 }
 
 fn target_dir() -> PathBuf {
