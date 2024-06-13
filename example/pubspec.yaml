@@ -31,7 +31,7 @@ dependencies:
   flutter:
     sdk: flutter
 
-  tor:
+  tor_ffi_plugin:
     # When depending on this package from a real application you should use:
     #   tor: ^x.y.z
     # See https://dart.dev/tools/pub/dependencies#version-constraints

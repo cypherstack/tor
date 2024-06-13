@@ -8,11 +8,10 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
 // Imports needed for tor usage:
 import 'package:socks5_proxy/socks_client.dart'; // Just for example; can use any socks5 proxy package, pick your favorite.
-import 'package:tor_ffi_plugin/tor_ffi_plugin.dart';
-import 'package:tor_ffi_plugin/socks_socket.dart'; // For socket connections
+import 'package:tor_ffi_plugin/socks_socket.dart';
+import 'package:tor_ffi_plugin/tor.dart';
 
 void main() {
   runApp(const MyApp());
@@ -38,7 +37,7 @@ class Home extends StatefulWidget {
 
 class _MyAppState extends State<Home> {
   // Flag to track if tor has started.
-  bool torIsRunning = false;
+  bool torStarted = false;
 
   // Set the default text for the host input field.
   final hostController = TextEditingController(text: 'https://icanhazip.com/');
@@ -52,7 +51,7 @@ class _MyAppState extends State<Home> {
 
     // Toggle started flag.
     setState(() {
-      torIsRunning = Tor.instance.status == TorStatus.on; // Update flag
+      torStarted = Tor.instance.started; // Update flag
     });
 
     print('Done awaiting; tor should be running');
@@ -77,18 +76,22 @@ class _MyAppState extends State<Home> {
           padding: const EdgeInsets.all(10),
           child: Column(
             children: [
-              TextButton(
-                onPressed: torIsRunning
-                    ? null
-                    : () async {
-                        unawaited(
-                          showDialog(
-                            barrierDismissible: false,
-                            context: context,
-                            builder: (_) => const Dialog(
-                              child: Padding(
-                                padding: EdgeInsets.all(20.0),
-                                child: Text("Starting tor..."),
+              Row(
+                children: [
+                  TextButton(
+                    onPressed: torStarted
+                        ? null
+                        : () async {
+                            unawaited(
+                              showDialog(
+                                barrierDismissible: false,
+                                context: context,
+                                builder: (_) => const Dialog(
+                                  child: Padding(
+                                    padding: EdgeInsets.all(20.0),
+                                    child: Text("Starting tor..."),
+                                  ),
+                                ),
                               ),
                             );
 
@@ -135,7 +138,7 @@ class _MyAppState extends State<Home> {
                   ),
                   spacerSmall,
                   TextButton(
-                    onPressed: torIsRunning
+                    onPressed: torStarted
                         ? () async {
                             // `socks5_proxy` package example, use another socks5
                             // connection of your choice.
@@ -176,7 +179,7 @@ class _MyAppState extends State<Home> {
               ),
               spacerSmall,
               TextButton(
-                onPressed: torIsRunning
+                onPressed: torStarted
                     ? () async {
                         // Instantiate a socks socket at localhost and on the port selected by the tor service.
                         var socksSocket = await SOCKSSocket.create(

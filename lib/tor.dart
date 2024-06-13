@@ -11,11 +11,9 @@ import 'dart:math';
 import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:tor_ffi_plugin/tor_ffi_plugin_bindings_generated.dart' as rust;
+import 'package:tor_ffi_plugin/generated_bindings.dart' as rust;
 
-export 'socks_socket.dart' show SOCKSSocket;
-
-DynamicLibrary _load(name) {
+DynamicLibrary load(name) {
   if (Platform.isAndroid || Platform.isLinux) {
     return DynamicLibrary.open('lib$name.so');
   } else if (Platform.isIOS || Platform.isMacOS) {
@@ -60,6 +58,9 @@ class Tor {
 
   /// Flag to indicate that a Tor circuit is thought to have been established
   /// (true means that Tor has bootstrapped).
+  bool get bootstrapped => _bootstrapped;
+
+  /// Getter for the bootstrapped flag.
   bool _bootstrapped = false;
 
   /// A stream of Tor events.
@@ -69,20 +70,20 @@ class Tor {
 
   /// Getter for the proxy port.
   ///
-  /// Throws if Tor is not enabled or if the circuit is not established.
+  /// Returns -1 if Tor is not enabled or if the circuit is not established.
   ///
   /// Returns the proxy port if Tor is enabled and the circuit is established.
   ///
   /// This is the port that should be used for all requests.
   int get port {
-    if (_proxyPort == null) {
-      throw Exception("");
+    if (!_enabled) {
+      return -1;
     }
-    return _proxyPort!;
+    return _proxyPort;
   }
 
   /// The proxy port.
-  int? _proxyPort;
+  int _proxyPort = -1;
 
   /// Singleton instance of the Tor class.
   static final Tor _instance = Tor._internal();
@@ -145,8 +146,7 @@ class Tor {
 
   /// Start the Tor service.
   ///
-  /// This will start the Tor service and establish a Tor circuit if there
-  /// already hasn't been one established.
+  /// This will start the Tor service and establish a Tor circuit.
   ///
   /// Throws an exception if the Tor service fails to start.
   ///
@@ -154,12 +154,15 @@ class Tor {
   Future<void> start() async {
     broadcastState();
 
-    try {
-      _status = TorStatus.starting;
+    // Set the state and cache directories.
+    final Directory appSupportDir = await getApplicationSupportDirectory();
+    final stateDir =
+        await Directory('${appSupportDir.path}/tor_state').create();
+    final cacheDir =
+        await Directory('${appSupportDir.path}/tor_cache').create();
 
-      // Set the state and cache directories.
-      final stateDir = await Directory('$torDataDirPath/tor_state').create();
-      final cacheDir = await Directory('$torDataDirPath/tor_cache').create();
+    // Generate a random port.
+    int newPort = await _getRandomUnusedPort();
 
     // Start the Tor service in an isolate.
     final tor = await Isolate.run(() async {
@@ -185,10 +188,8 @@ class Tor {
     _proxyPtr = Pointer.fromAddress(tor.proxy.address);
     _started = true;
 
-        // Throw an exception if the Tor service fails to start.
-        if (ptr == nullptr) {
-          throwRustException(lib);
-        }
+    // Bootstrap the Tor service.
+    bootstrap();
 
     // Set the proxy port.
     _proxyPort = newPort;
@@ -205,7 +206,7 @@ class Tor {
   /// Throws an exception if the Tor service fails to bootstrap.
   ///
   /// Returns void.
-  void _bootstrap() {
+  void bootstrap() {
     // Load the Tor library.
     final lib = rust.NativeLibrary(_lib);
 
@@ -213,7 +214,7 @@ class Tor {
     _bootstrapped = lib.tor_client_bootstrap(_clientPtr);
 
     // Throw an exception if the Tor service fails to bootstrap.
-    if (!_bootstrapped) {
+    if (!bootstrapped) {
       throwRustException(lib);
     }
   }
@@ -249,19 +250,14 @@ class Tor {
                 return false;
               }
 
-    retry:
-    while (potentialPort <= 0 || excluded.contains(potentialPort)) {
-      potentialPort = random.nextInt(65535);
-      try {
-        var socket = await ServerSocket.bind("0.0.0.0", potentialPort);
-        socket.close();
-        return potentialPort;
-      } catch (_) {
-        continue retry;
-      }
-    }
+              // ...or Tor circuit is established
+              if (bootstrapped) {
+                return false;
+              }
 
-    return null;
+              // This way we avoid making clearnet req's while Tor is initialising
+              return true;
+            }));
   }
 
   static throwRustException(rust.NativeLibrary lib) {

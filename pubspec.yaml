@@ -1,4 +1,4 @@
-name: tor
+name: tor_ffi_plugin
 description: A multi-platform Flutter plugin for managing a Tor proxy. Based on arti.
 version: 0.0.3
 homepage: https://github.com/Foundation-Devices/tor
@@ -19,6 +19,7 @@ dependencies:
     sdk: flutter
   ffi: ^2.0.1
   plugin_platform_interface: ^2.0.2
+  path_provider: ^2.1.3
 
 dev_dependencies:
   ffigen: ^11.0.0
