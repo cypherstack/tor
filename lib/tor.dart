@@ -36,6 +36,12 @@ class NotSupportedPlatform implements Exception {
 
 class ClientNotActive implements Exception {}
 
+enum TorStatus {
+  on,
+  starting,
+  off;
+}
+
 class Tor {
   static const String libName = "tor";
   static late DynamicLibrary _lib;
@@ -54,6 +60,10 @@ class Tor {
 
   /// Getter for the enabled flag.
   bool get enabled => _enabled;
+
+  /// Status of the tor proxy service
+  TorStatus get status => _status;
+  TorStatus _status = TorStatus.off;
 
   /// Flag to indicate that a Tor circuit is thought to have been established
   /// (true means that Tor has bootstrapped).
@@ -151,45 +161,58 @@ class Tor {
   ///
   /// Returns a Future that completes when the Tor service has started.
   Future<void> start({required String torDataDirPath}) async {
-    broadcastState();
+    if (_status != TorStatus.off) {
+      // already starting or running
+      return;
+    }
 
-    // Set the state and cache directories.
-    final stateDir = await Directory('$torDataDirPath/tor_state').create();
-    final cacheDir = await Directory('$torDataDirPath/tor_cache').create();
+    try {
+      _status = TorStatus.starting;
+      broadcastState();
 
-    // Generate a random port.
-    int newPort = await _getRandomUnusedPort();
+      // Set the state and cache directories.
+      final stateDir = await Directory('$torDataDirPath/tor_state').create();
+      final cacheDir = await Directory('$torDataDirPath/tor_cache').create();
 
-    // Start the Tor service in an isolate.
-    final tor = await Isolate.run(() async {
-      // Load the Tor library.
-      var lib = rust.NativeLibrary(load(libName));
+      // Generate a random port.
+      int newPort = await _getRandomUnusedPort();
 
-      // Start the Tor service.
-      final tor = lib.tor_start(
-          newPort,
-          stateDir.path.toNativeUtf8() as Pointer<Char>,
-          cacheDir.path.toNativeUtf8() as Pointer<Char>);
+      // Start the Tor service in an isolate.
+      final tor = await Isolate.run(() async {
+        // Load the Tor library.
+        var lib = rust.NativeLibrary(load(libName));
 
-      // Throw an exception if the Tor service fails to start.
-      if (tor.client == nullptr) {
-        throwRustException(lib);
-      }
+        // Start the Tor service.
+        final tor = lib.tor_start(
+            newPort,
+            stateDir.path.toNativeUtf8() as Pointer<Char>,
+            cacheDir.path.toNativeUtf8() as Pointer<Char>);
 
-      return tor;
-    });
+        // Throw an exception if the Tor service fails to start.
+        if (tor.client == nullptr) {
+          throwRustException(lib);
+        }
 
-    // Set the client pointer and started flag.
-    _clientPtr = Pointer.fromAddress(tor.client.address);
-    _proxyPtr = Pointer.fromAddress(tor.proxy.address);
-    _started = true;
+        return tor;
+      });
 
-    // Bootstrap the Tor service.
-    bootstrap();
+      // Set the client pointer and started flag.
+      _clientPtr = Pointer.fromAddress(tor.client.address);
+      _proxyPtr = Pointer.fromAddress(tor.proxy.address);
+      _started = true;
 
-    // Set the proxy port.
-    _proxyPort = newPort;
-    broadcastState();
+      // Bootstrap the Tor service.
+      bootstrap();
+
+      // Set the proxy port.
+      _proxyPort = newPort;
+
+      _status = TorStatus.on;
+      broadcastState();
+    } catch (_) {
+      _status = TorStatus.off;
+      rethrow;
+    }
   }
 
   /// Bootstrap the Tor service.
@@ -217,8 +240,10 @@ class Tor {
 
   /// Prevent traffic flowing through the proxy
   void disable() {
+    _status = TorStatus.off;
     _enabled = false;
     broadcastState();
+    // TODO: this doesn't actually shut tor down.
   }
 
   /// Stops the proxy
