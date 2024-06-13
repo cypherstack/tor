@@ -8,10 +8,11 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 // Imports needed for tor usage:
 import 'package:socks5_proxy/socks_client.dart'; // Just for example; can use any socks5 proxy package, pick your favorite.
-import 'package:tor/tor.dart';
 import 'package:tor/socks_socket.dart'; // For socket connections
+import 'package:tor/tor.dart';
 
 void main() {
   runApp(const MyApp());
@@ -47,7 +48,9 @@ class _MyAppState extends State<Home> {
     await Tor.init();
 
     // Start the proxy
-    await Tor.instance.start();
+    await Tor.instance.start(
+      torDataDirPath: (await getApplicationSupportDirectory()).path,
+    );
 
     // Toggle started flag.
     setState(() {

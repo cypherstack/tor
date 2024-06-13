@@ -10,7 +10,6 @@ import 'dart:math';
 
 import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:tor/generated_bindings.dart' as rust;
 
 DynamicLibrary load(name) {
@@ -113,10 +112,10 @@ class Tor {
   }
 
   /// Start the Tor service.
-  Future<void> enable() async {
+  Future<void> enable({required String torDataDirPath}) async {
     _enabled = true;
     if (!started) {
-      await start();
+      await start(torDataDirPath: torDataDirPath);
     }
     broadcastState();
   }
@@ -151,15 +150,12 @@ class Tor {
   /// Throws an exception if the Tor service fails to start.
   ///
   /// Returns a Future that completes when the Tor service has started.
-  Future<void> start() async {
+  Future<void> start({required String torDataDirPath}) async {
     broadcastState();
 
     // Set the state and cache directories.
-    final Directory appSupportDir = await getApplicationSupportDirectory();
-    final stateDir =
-        await Directory('${appSupportDir.path}/tor_state').create();
-    final cacheDir =
-        await Directory('${appSupportDir.path}/tor_cache').create();
+    final stateDir = await Directory('$torDataDirPath/tor_state').create();
+    final cacheDir = await Directory('$torDataDirPath/tor_cache').create();
 
     // Generate a random port.
     int newPort = await _getRandomUnusedPort();
