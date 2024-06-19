@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: 2023 Foundation Devices Inc.
-//
-// SPDX-License-Identifier: GPL-3.0-or-later
-
 // Example app deps, not necessarily needed for tor usage.
 import 'dart:async';
 import 'dart:convert';
@@ -11,8 +7,8 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 // Imports needed for tor usage:
 import 'package:socks5_proxy/socks_client.dart'; // Just for example; can use any socks5 proxy package, pick your favorite.
-import 'package:tor_ffi_plugin/socks_socket.dart';
-import 'package:tor_ffi_plugin/tor.dart';
+import 'package:tor_ffi_plugin/tor_ffi_plugin.dart';
+import 'package:tor_ffi_plugin/socks_socket.dart'; // For socket connections
 
 void main() {
   runApp(const MyApp());
@@ -45,9 +41,7 @@ class _MyAppState extends State<Home> {
   // https://check.torproject.org is another good option.
 
   Future<void> startTor() async {
-    await Tor.init();
-
-    // Start the proxy
+    // Start the Tor daemon.
     await Tor.instance.start(
       torDataDirPath: (await getApplicationSupportDirectory()).path,
     );
@@ -79,53 +73,38 @@ class _MyAppState extends State<Home> {
           padding: const EdgeInsets.all(10),
           child: Column(
             children: [
-              Row(
-                children: [
-                  TextButton(
-                    onPressed: torStarted
-                        ? null
-                        : () async {
-                            unawaited(
-                              showDialog(
-                                barrierDismissible: false,
-                                context: context,
-                                builder: (_) => const Dialog(
-                                  child: Padding(
-                                    padding: EdgeInsets.all(20.0),
-                                    child: Text("Starting tor..."),
-                                  ),
-                                ),
+              TextButton(
+                onPressed: torIsRunning
+                    ? null
+                    : () async {
+                        unawaited(
+                          showDialog(
+                            barrierDismissible: false,
+                            context: context,
+                            builder: (_) => const Dialog(
+                              child: Padding(
+                                padding: EdgeInsets.all(20.0),
+                                child: Text("Starting tor..."),
                               ),
-                            );
+                            ),
+                          ),
+                        );
 
-                            final time = DateTime.now();
+                        final time = DateTime.now();
 
-                            print("NOW: $time");
+                        print("NOW: $time");
 
-                            await startTor();
+                        await startTor();
 
-                            print("Starting tor took "
-                                "${DateTime.now().difference(time).inSeconds} "
-                                "seconds. Proxy running on port ${Tor.instance.port}");
+                        print("Start tor took "
+                            "${DateTime.now().difference(time).inSeconds} "
+                            "seconds");
 
-                            if (mounted) {
-                              Navigator.of(context).pop();
-                            }
-                          },
-                    child: const Text("Start"),
-                  ),
-                  TextButton(
-                    onPressed: !torStarted
-                        ? null
-                        : () async {
-                            await Tor.instance.stop();
-                            setState(() {
-                              torStarted = false; // Update flag
-                            });
-                          },
-                    child: const Text("Stop"),
-                  ),
-                ],
+                        if (mounted) {
+                          Navigator.of(context).pop();
+                        }
+                      },
+                child: const Text("Start tor"),
               ),
               Row(
                 children: [

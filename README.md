@@ -12,7 +12,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 ### [Install rust](https://www.rust-lang.org/tools/install)
 
-Install 1.73 or newer.  Use `rustup`, not `homebrew`.
+Install 1.74 or newer.  Use `rustup`, not `homebrew`.
 
 ### Install cargo ndk
 
@@ -31,10 +31,11 @@ git subtree pull --prefix cargokit https://github.com/irondash/cargokit.git main
 
 ## Development
 
-To (re)generate Dart bindings run `just generate`
+To generate `tor-ffi.h` C bindings for Rust, `cbindgen --config cbindgen.toml --crate tor-ffi --output target/tor-ffi.h` or `cargo build` in `native/tor-ffi` to produce headers according to `build.rs`
+To generate `tor_bindings_generated.dart` Dart bindings for C, `flutter pub run ffigen --config ffigen.yaml`
 
 ## Example app
 
 `flutter run` in `example` to run the example app
 
-See `example/lib/main.dart` for usage.
+See `example/lib/main.dart` for usage.  Must run the build script for your platform first.
