@@ -34,7 +34,7 @@ class Home extends StatefulWidget {
 
 class _MyAppState extends State<Home> {
   // Flag to track if tor has started.
-  bool torStarted = false;
+  bool torIsRunning = false;
 
   // Set the default text for the host input field.
   final hostController = TextEditingController(text: 'https://icanhazip.com/');
@@ -48,7 +48,7 @@ class _MyAppState extends State<Home> {
 
     // Toggle started flag.
     setState(() {
-      torStarted = Tor.instance.started; // Update flag
+      torIsRunning = Tor.instance.status == TorStatus.on; // Update flag
     });
 
     print('Done awaiting; tor should be running');
@@ -120,7 +120,7 @@ class _MyAppState extends State<Home> {
                   ),
                   spacerSmall,
                   TextButton(
-                    onPressed: torStarted
+                    onPressed: torIsRunning
                         ? () async {
                             // `socks5_proxy` package example, use another socks5
                             // connection of your choice.
@@ -161,7 +161,7 @@ class _MyAppState extends State<Home> {
               ),
               spacerSmall,
               TextButton(
-                onPressed: torStarted
+                onPressed: torIsRunning
                     ? () async {
                         // Instantiate a socks socket at localhost and on the port selected by the tor service.
                         var socksSocket = await SOCKSSocket.create(
