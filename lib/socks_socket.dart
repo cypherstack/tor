@@ -2,8 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
-
 /// A SOCKS5 socket.
 ///
 /// A Dart 3 Socket wrapper that implements the SOCKS5 protocol.  Now with SSL!

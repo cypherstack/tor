@@ -157,10 +157,10 @@ class Tor {
   /// Returns void.
   void _bootstrap() {
     // Load the Tor library.
-    final lib = rust.NativeLibrary(_lib);
+    final lib = NativeLibrary(_lib);
 
     // Bootstrap the Tor service.
-    _bootstrapped = lib.tor_client_bootstrap(_clientPtr);
+    _bootstrapped = lib.tor_bootstrap(_clientPtr);
 
     // Throw an exception if the Tor service fails to bootstrap.
     if (!_bootstrapped) {
@@ -215,6 +215,6 @@ class Tor {
   }
 
   void hello() {
-    rust.NativeLibrary(_lib).tor_hello();
+    NativeLibrary(_lib).tor_hello();
   }
 }

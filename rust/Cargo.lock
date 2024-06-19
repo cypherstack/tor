@@ -157,9 +157,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.79"
+version = "1.0.75"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "080e9890a082662b09c1ad45f567faeeb47f22b5fb23895fbe1e651e718e25ca"
+checksum = "a4668cab20f66d8d020e1fbc0ebe47217433c1b6c8f2040faf858554e394ace6"
 
 [[package]]
 name = "arrayvec"
@@ -852,16 +852,6 @@ checksum = "5283ac2881753c76c0892406705553f0d9ab30649f81e18964d3408f4501edb8"
 dependencies = [
  "derive-adhoc-macros",
  "heck 0.4.1",
-]
-
-[[package]]
-name = "derive-adhoc"
-version = "0.8.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "acd539187faa4741d0b5cee4bfe866b655cbe3cf497ecbe60db60883108e19fb"
-dependencies = [
- "derive-adhoc-macros 0.8.1",
- "heck",
 ]
 
 [[package]]
@@ -2303,12 +2293,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "26072860ba924cbfa98ea39c8c19b4dd6a4a25423dbdf219c1eca91aa0cf6964"
 
 [[package]]
-name = "platforms"
-version = "3.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "14e6ab3f592e6fb464fc9712d8d6e6912de6473954635fd76a589d832cffcbb0"
-
-[[package]]
 name = "postage"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2374,7 +2358,7 @@ version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6955c41fd7e4283bdf6ff3e7218b7e3f8ef24c4236b31d22be050f4cfd5e2a2c"
 dependencies = [
- "derive-adhoc 0.7.3",
+ "derive-adhoc",
  "libc",
  "paste",
  "thiserror",
@@ -3285,22 +3269,6 @@ dependencies = [
  "serde_spanned",
  "toml_datetime",
  "winnow 0.6.13",
-]
-
-[[package]]
-name = "tor"
-version = "0.0.3"
-dependencies = [
- "anyhow",
- "arti",
- "arti-client",
- "cbindgen",
- "lazy_static",
- "log",
- "rlimit",
- "tokio",
- "tor-config",
- "tor-rtcompat",
 ]
 
 [[package]]

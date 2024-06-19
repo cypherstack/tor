@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: 2023 Foundation Devices Inc.
-//
-// SPDX-License-Identifier: GPL-3.0-or-later
-
 // Example app deps, not necessarily needed for tor usage.
 import 'dart:async';
 import 'dart:convert';
@@ -50,11 +46,6 @@ class _MyAppState extends State<Home> {
       torDataDirPath: (await getApplicationSupportDirectory()).path,
     );
 
-    // Start the proxy
-    await Tor.instance.start(
-      torDataDirPath: (await getApplicationSupportDirectory()).path,
-    );
-
     // Toggle started flag.
     setState(() {
       torIsRunning = Tor.instance.status == TorStatus.on; // Update flag
@@ -95,36 +86,25 @@ class _MyAppState extends State<Home> {
                                 padding: EdgeInsets.all(20.0),
                                 child: Text("Starting tor..."),
                               ),
-                            );
+                            ),
+                          ),
+                        );
 
-                            final time = DateTime.now();
+                        final time = DateTime.now();
 
-                            print("NOW: $time");
+                        print("NOW: $time");
 
-                            await startTor();
+                        await startTor();
 
-                            print("Starting tor took "
-                                "${DateTime.now().difference(time).inSeconds} "
-                                "seconds. Proxy running on port ${Tor.instance.port}");
+                        print("Start tor took "
+                            "${DateTime.now().difference(time).inSeconds} "
+                            "seconds");
 
-                            if (mounted) {
-                              Navigator.of(context).pop();
-                            }
-                          },
-                    child: const Text("Start"),
-                  ),
-                  TextButton(
-                    onPressed: !torStarted
-                        ? null
-                        : () async {
-                            await Tor.instance.stop();
-                            setState(() {
-                              torStarted = false; // Update flag
-                            });
-                          },
-                    child: const Text("Stop"),
-                  ),
-                ],
+                        if (mounted) {
+                          Navigator.of(context).pop();
+                        }
+                      },
+                child: const Text("Start tor"),
               ),
               Row(
                 children: [
