@@ -202,7 +202,7 @@ dependencies = [
  "toml 0.8.14",
  "tor-config",
  "tor-error",
- "tor-rtcompat 0.19.0",
+ "tor-rtcompat",
  "tor-socksproto",
  "tracing",
  "tracing-appender",
@@ -251,7 +251,7 @@ dependencies = [
  "tor-persist",
  "tor-proto",
  "tor-ptmgr",
- "tor-rtcompat 0.19.0",
+ "tor-rtcompat",
  "tracing",
  "void",
 ]
@@ -288,16 +288,6 @@ dependencies = [
  "native-tls",
  "thiserror",
  "url",
-]
-
-[[package]]
-name = "async-rustls"
-version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ecfa55659849ace733f86ccd219da40abd8bc14124e40b312433e85a5a266e77"
-dependencies = [
- "futures-io",
- "rustls",
 ]
 
 [[package]]
@@ -1764,7 +1754,7 @@ version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 dependencies = [
- "spin 0.5.2",
+ "spin",
 ]
 
 [[package]]
@@ -2535,36 +2525,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ring"
-version = "0.16.20"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3053cf52e236a3ed746dfc745aa9cacf1b791d846bdaf412f60a8d7d6e17c8fc"
-dependencies = [
- "cc",
- "libc",
- "once_cell",
- "spin 0.5.2",
- "untrusted 0.7.1",
- "web-sys",
- "winapi",
-]
-
-[[package]]
-name = "ring"
-version = "0.17.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c17fa4cb658e3583423e915b9f3acc01cceaee1860e33d59ebae66adc3a2dc0d"
-dependencies = [
- "cc",
- "cfg-if",
- "getrandom",
- "libc",
- "spin 0.9.8",
- "untrusted 0.9.0",
- "windows-sys 0.52.0",
-]
-
-[[package]]
 name = "rlimit"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2640,28 +2600,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rustls"
-version = "0.21.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f56a14d1f48b391359b22f731fd4bd7e43c97f3c50eee276f3aa09c94784d3e"
-dependencies = [
- "log",
- "ring 0.17.8",
- "rustls-webpki",
- "sct",
-]
-
-[[package]]
-name = "rustls-webpki"
-version = "0.101.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8b6275d1ee7a1cd780b64aca7726599a1dbc893b1e64144529e55c3c2f745765"
-dependencies = [
- "ring 0.17.8",
- "untrusted 0.9.0",
-]
-
-[[package]]
 name = "rustversion"
 version = "1.0.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2719,16 +2657,6 @@ name = "scopeguard"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
-
-[[package]]
-name = "sct"
-version = "0.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da046153aa2352493d6cb7da4b6e5c0c057d8a1d0a9aa8560baffdd945acd414"
-dependencies = [
- "ring 0.17.8",
- "untrusted 0.9.0",
-]
 
 [[package]]
 name = "sec1"
@@ -3002,12 +2930,6 @@ name = "spin"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
-
-[[package]]
-name = "spin"
-version = "0.9.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
 
 [[package]]
 name = "spki"
@@ -3495,7 +3417,7 @@ dependencies = [
  "tor-llcrypto",
  "tor-netdir",
  "tor-proto",
- "tor-rtcompat 0.19.0",
+ "tor-rtcompat",
  "tor-socksproto",
  "tor-units",
  "tracing",
@@ -3553,7 +3475,7 @@ dependencies = [
  "tor-proto",
  "tor-protover",
  "tor-relay-selection",
- "tor-rtcompat 0.19.0",
+ "tor-rtcompat",
  "tracing",
  "void",
  "weak-table",
@@ -3625,7 +3547,7 @@ dependencies = [
  "tor-llcrypto",
  "tor-netdoc",
  "tor-proto",
- "tor-rtcompat 0.19.0",
+ "tor-rtcompat",
  "tracing",
 ]
 
@@ -3676,7 +3598,7 @@ dependencies = [
  "tor-netdoc",
  "tor-persist",
  "tor-proto",
- "tor-rtcompat 0.19.0",
+ "tor-rtcompat",
  "tracing",
 ]
 
@@ -3735,7 +3657,7 @@ dependencies = [
  "tor-proto",
  "tor-protover",
  "tor-relay-selection",
- "tor-rtcompat 0.19.0",
+ "tor-rtcompat",
  "tor-units",
  "tracing",
 ]
@@ -3777,7 +3699,7 @@ dependencies = [
  "tor-netdoc",
  "tor-persist",
  "tor-proto",
- "tor-rtcompat 0.19.0",
+ "tor-rtcompat",
  "tracing",
 ]
 
@@ -3904,7 +3826,7 @@ dependencies = [
  "once_cell",
  "thiserror",
  "tor-error",
- "tor-rtcompat 0.19.0",
+ "tor-rtcompat",
  "tracing",
  "weak-table",
 ]
@@ -4044,7 +3966,7 @@ dependencies = [
  "tor-linkspec",
  "tor-llcrypto",
  "tor-log-ratelim",
- "tor-rtcompat 0.19.0",
+ "tor-rtcompat",
  "tor-rtmock",
  "tor-units",
  "tracing",
@@ -4083,7 +4005,7 @@ dependencies = [
  "tor-config",
  "tor-error",
  "tor-linkspec",
- "tor-rtcompat 0.19.0",
+ "tor-rtcompat",
  "tor-socksproto",
  "tracing",
 ]
@@ -4100,27 +4022,6 @@ dependencies = [
  "tor-linkspec",
  "tor-netdir",
  "tor-netdoc",
-]
-
-[[package]]
-name = "tor-rtcompat"
-version = "0.9.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "be71f1a409ed38b64f11d4506407898daae2fab486a9cfc87d0d56fa783b22da"
-dependencies = [
- "async-native-tls",
- "async-rustls",
- "async-trait",
- "async_executors",
- "educe",
- "futures",
- "native-tls",
- "pin-project",
- "rustls",
- "thiserror",
- "tokio",
- "tokio-util",
- "x509-signature",
 ]
 
 [[package]]
@@ -4167,7 +4068,7 @@ dependencies = [
  "thiserror",
  "tor-async-utils",
  "tor-error",
- "tor-rtcompat 0.19.0",
+ "tor-rtcompat",
  "tracing",
  "tracing-test",
  "void",
@@ -4211,7 +4112,7 @@ dependencies = [
  "rlimit",
  "tokio",
  "tor-config",
- "tor-rtcompat 0.9.7",
+ "tor-rtcompat",
 ]
 
 [[package]]
@@ -4351,18 +4252,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "untrusted"
-version = "0.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a156c684c91ea7d62626509bce3cb4e1d9ed5c4d978f7b4352658f96a4c26b4a"
-
-[[package]]
-name = "untrusted"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
-
-[[package]]
 name = "url"
 version = "2.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4498,16 +4387,6 @@ name = "weak-table"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "323f4da9523e9a669e1eaf9c6e763892769b1d38c623913647bfdc1532fe4549"
-
-[[package]]
-name = "web-sys"
-version = "0.3.69"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "77afa9a11836342370f4817622a2f0f418b134426d91a82dfb48f532d2ec13ef"
-dependencies = [
- "js-sys",
- "wasm-bindgen",
-]
 
 [[package]]
 name = "winapi"
@@ -4735,16 +4614,6 @@ dependencies = [
  "rand_core",
  "serde",
  "zeroize",
-]
-
-[[package]]
-name = "x509-signature"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9fb2bc2a902d992cd5f471ee3ab0ffd6603047a4207384562755b9d6de977518"
-dependencies = [
- "ring 0.16.20",
- "untrusted 0.7.1",
 ]
 
 [[package]]
