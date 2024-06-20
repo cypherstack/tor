@@ -30,3 +30,5 @@ migrate_working_dir/
 build/
 
 rust/target/.rustc_info.json
+rust/target/debug/
+rust/target/CACHEDIR.TAG
