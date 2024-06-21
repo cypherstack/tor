@@ -346,14 +346,18 @@ class SOCKSSocket {
 
       // Wait for the response from the proxy server.
       var responseData = await _responseController.stream.first;
-      print("responseData: ${utf8.decode(responseData)}");
+      if (kDebugMode) {
+        print("responseData: ${utf8.decode(responseData)}");
+      }
     } else {
       // Send the command to the proxy server.
       _secureSocksSocket.writeln(command);
 
       // Wait for the response from the proxy server.
       var responseData = await _secureResponseController.stream.first;
-      print("secure responseData: ${utf8.decode(responseData)}");
+      if (kDebugMode) {
+        print("secure responseData: ${utf8.decode(responseData)}");
+      }
     }
 
     return;
