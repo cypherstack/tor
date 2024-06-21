@@ -173,7 +173,7 @@ class Tor {
   //   _status = false;
   // }
 
-  Pointer<Int> _clientPtr = nullptr;
+  Pointer<Void> _clientPtr = nullptr;
 
   Future<int?> _getRandomUnusedPort({List<int> excluded = const []}) async {
     var random = Random.secure();

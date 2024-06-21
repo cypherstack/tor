@@ -133,7 +133,7 @@ class TorFfiPluginBindings {
       _tor_set_nofile_limitPtr.asFunction<int Function(int)>();
 }
 
-class Tor extends ffi.Struct {
+final class Tor extends ffi.Struct {
   external ffi.Pointer<ffi.Void> client;
 
   external ffi.Pointer<ffi.Void> proxy;
