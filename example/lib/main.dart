@@ -220,7 +220,9 @@ class _MyAppState extends State<Home> {
                 onPressed: torIsRunning
                     ? () async {
                         String domain =
-                            "rr2g3yknpsul3nbwmw6reb6jyp3aw5ixz4mkqf4fmostfazzlhr4cdyd.onion";
+                            "nuzzg3pku3xbctgamzq3pf7ztakkiidnmmier64arqwh3ajdddovatad.onion";
+                        int port = 50002;
+                        // See https://github.com/spesmilo/electrum/blob/master/electrum/servers.json#L375C6-L375C68
 
                         // Instantiate a socks socket at localhost and on the port selected by the tor service.
                         var socksSocket = await SOCKSSocket.create(
@@ -236,7 +238,7 @@ class _MyAppState extends State<Home> {
                         // Connect to onion node via socks socket.
                         //
                         // Note that this is an SSL example.
-                        await socksSocket.connectTo(domain, 8333);
+                        await socksSocket.connectTo(domain, port);
 
                         // Send a server features command to the connected socket, see method for more specific usage example..
                         await socksSocket.sendServerFeaturesCommand();
