@@ -220,8 +220,8 @@ class _MyAppState extends State<Home> {
                 onPressed: torIsRunning
                     ? () async {
                         String domain =
-                            "nuzzg3pku3xbctgamzq3pf7ztakkiidnmmier64arqwh3ajdddovatad.onion";
-                        int port = 50002;
+                            "qly7g5n5t3f3h23xvbp44vs6vpmayurno4basuu5rcvrupli7y2jmgid.onion";
+                        int port = 50001;
                         // See https://github.com/spesmilo/electrum/blob/master/electrum/servers.json#L375C6-L375C68
 
                         // Instantiate a socks socket at localhost and on the port selected by the tor service.
