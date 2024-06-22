@@ -113,7 +113,7 @@ class Tor {
       // Start the Tor service in an isolate.
       final int ptr = await Isolate.run(() async {
         // Load the Tor library.
-        var lib = NativeLibrary(_load(_libName));
+        var lib = TorFfiPluginBindings(_load(_libName));
 
         // Start the Tor service.
         final ptr = lib.tor_start(
@@ -127,7 +127,7 @@ class Tor {
         }
 
         // Return the pointer.
-        return ptr.address;
+        return ptr.client.address;
       });
 
       // Set the client pointer and started flag.
@@ -157,10 +157,10 @@ class Tor {
   /// Returns void.
   void _bootstrap() {
     // Load the Tor library.
-    final lib = NativeLibrary(_lib);
+    final lib = TorFfiPluginBindings(_lib);
 
     // Bootstrap the Tor service.
-    _bootstrapped = lib.tor_bootstrap(_clientPtr);
+    _bootstrapped = lib.tor_client_bootstrap(_clientPtr);
 
     // Throw an exception if the Tor service fails to bootstrap.
     if (!_bootstrapped) {
@@ -173,7 +173,7 @@ class Tor {
   //   _status = false;
   // }
 
-  Pointer<Int> _clientPtr = nullptr;
+  Pointer<Void> _clientPtr = nullptr;
 
   Future<int?> _getRandomUnusedPort({List<int> excluded = const []}) async {
     var random = Random.secure();
@@ -200,7 +200,7 @@ class Tor {
   //   // if (enabled && started && circuitEstablished) {}
   // }
 
-  static void throwRustException(NativeLibrary lib) {
+  static void throwRustException(TorFfiPluginBindings lib) {
     String rustError = lib.tor_last_error_message().cast<Utf8>().toDartString();
 
     throw _getRustException(rustError);
@@ -215,6 +215,6 @@ class Tor {
   }
 
   void hello() {
-    NativeLibrary(_lib).tor_hello();
+    TorFfiPluginBindings(_lib).tor_hello();
   }
 }
