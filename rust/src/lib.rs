@@ -108,10 +108,11 @@ pub unsafe extern "C" fn tor_client_set_dormant(client: *mut c_void, soft_mode: 
 
 #[no_mangle]
 pub unsafe extern "C" fn tor_proxy_stop(proxy: *mut c_void) {
-    let proxy = {
-        assert!(!proxy.is_null());
-        Box::from_raw(proxy as *mut JoinHandle<anyhow::Result<()>>)
-    };
+    if proxy.is_null() {
+        return;
+    }
+
+    let proxy = Box::from_raw(proxy as *mut JoinHandle<anyhow::Result<()>>);
 
     proxy.abort();
 }
