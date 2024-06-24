@@ -181,6 +181,15 @@ class Tor {
     _proxyPtr = nullptr;
   }
 
+  setClientDormant(bool dormant) async {
+    if (_clientPtr == nullptr || status == TorStatus.off) {
+      throw ClientNotActive();
+    }
+
+    final lib = TorFfiPluginBindings(_lib);
+    lib.tor_client_set_dormant(_clientPtr, dormant);
+  }
+
   Pointer<Void> _clientPtr = nullptr;
   Pointer<Void> _proxyPtr = nullptr;
 
@@ -227,3 +236,5 @@ class Tor {
     TorFfiPluginBindings(_lib).tor_hello();
   }
 }
+
+class ClientNotActive implements Exception {}
