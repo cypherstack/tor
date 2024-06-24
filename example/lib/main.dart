@@ -111,6 +111,7 @@ class _MyAppState extends State<Home> {
                     onPressed: !torIsRunning
                         ? null
                         : () async {
+                            Tor.instance.disable();
                             await Tor.instance.stop();
                             setState(() {
                               torIsRunning = false;
