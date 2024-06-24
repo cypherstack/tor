@@ -73,7 +73,7 @@ class Tor {
   ///
   /// This is the port that should be used for all requests.
   int get port {
-    if (_proxyPort == null) {
+    if (_proxyPort == null || _status == TorStatus.off) {
       throw Exception("Tor proxy port is unexpectedly null");
     }
     return _proxyPort!;
@@ -168,10 +168,10 @@ class Tor {
     }
   }
 
-  // TODO: this doesn't actually shut tor down
-  // void disable() {
-  //   _status = false;
-  // }
+  /// Prevent traffic flowing through the proxy
+  void disable() {
+    _status = TorStatus.off;
+  }
 
   Pointer<Void> _clientPtr = nullptr;
 
