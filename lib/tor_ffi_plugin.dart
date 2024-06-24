@@ -73,7 +73,7 @@ class Tor {
   ///
   /// This is the port that should be used for all requests.
   int get port {
-    if (_proxyPort == null) {
+    if (_proxyPort == null || _status == TorStatus.off) {
       throw Exception("Tor proxy port is unexpectedly null");
     }
     return _proxyPort!;
@@ -111,7 +111,7 @@ class Tor {
       }
 
       // Start the Tor service in an isolate.
-      final int ptr = await Isolate.run(() async {
+      final tor = await Isolate.run(() async {
         // Load the Tor library.
         var lib = TorFfiPluginBindings(_load(_libName));
 
@@ -127,11 +127,12 @@ class Tor {
         }
 
         // Return the pointer.
-        return ptr.client.address;
+        return ptr;
       });
 
       // Set the client pointer and started flag.
-      _clientPtr = Pointer.fromAddress(ptr);
+      _clientPtr = Pointer.fromAddress(tor.client.address);
+      _proxyPtr = Pointer.fromAddress(tor.proxy.address);
 
       // Bootstrap the Tor service.
       _bootstrap();
@@ -168,12 +169,29 @@ class Tor {
     }
   }
 
-  // TODO: this doesn't actually shut tor down
-  // void disable() {
-  //   _status = false;
-  // }
+  /// Prevent traffic flowing through the proxy
+  void disable() {
+    _status = TorStatus.off;
+  }
+
+  /// Stop the proxy.
+  stop() async {
+    final lib = TorFfiPluginBindings(_lib);
+    lib.tor_proxy_stop(_proxyPtr);
+    _proxyPtr = nullptr;
+  }
+
+  setClientDormant(bool dormant) async {
+    if (_clientPtr == nullptr || status == TorStatus.off) {
+      throw ClientNotActive();
+    }
+
+    final lib = TorFfiPluginBindings(_lib);
+    lib.tor_client_set_dormant(_clientPtr, dormant);
+  }
 
   Pointer<Void> _clientPtr = nullptr;
+  Pointer<Void> _proxyPtr = nullptr;
 
   Future<int?> _getRandomUnusedPort({List<int> excluded = const []}) async {
     var random = Random.secure();
@@ -218,3 +236,5 @@ class Tor {
     TorFfiPluginBindings(_lib).tor_hello();
   }
 }
+
+class ClientNotActive implements Exception {}
