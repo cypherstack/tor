@@ -74,7 +74,7 @@ class Tor {
   /// This is the port that should be used for all requests.
   int get port {
     if (_proxyPort == null) {
-      throw Exception("");
+      throw Exception("Tor proxy port is unexpectedly null");
     }
     return _proxyPort!;
   }
