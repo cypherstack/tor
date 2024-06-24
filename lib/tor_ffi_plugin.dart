@@ -111,7 +111,7 @@ class Tor {
       }
 
       // Start the Tor service in an isolate.
-      final int ptr = await Isolate.run(() async {
+      final tor = await Isolate.run(() async {
         // Load the Tor library.
         var lib = TorFfiPluginBindings(_load(_libName));
 
@@ -127,11 +127,12 @@ class Tor {
         }
 
         // Return the pointer.
-        return ptr.client.address;
+        return ptr;
       });
 
       // Set the client pointer and started flag.
-      _clientPtr = Pointer.fromAddress(ptr);
+      _clientPtr = Pointer.fromAddress(tor.client.address);
+      _proxyPtr = Pointer.fromAddress(tor.proxy.address);
 
       // Bootstrap the Tor service.
       _bootstrap();
@@ -173,7 +174,15 @@ class Tor {
     _status = TorStatus.off;
   }
 
+  /// Stop the proxy.
+  stop() async {
+    final lib = TorFfiPluginBindings(_lib);
+    lib.tor_proxy_stop(_proxyPtr);
+    _proxyPtr = nullptr;
+  }
+
   Pointer<Void> _clientPtr = nullptr;
+  Pointer<Void> _proxyPtr = nullptr;
 
   Future<int?> _getRandomUnusedPort({List<int> excluded = const []}) async {
     var random = Random.secure();
