@@ -72,38 +72,53 @@ class _MyAppState extends State<Home> {
           padding: const EdgeInsets.all(10),
           child: Column(
             children: [
-              TextButton(
-                onPressed: torIsRunning
-                    ? null
-                    : () async {
-                        unawaited(
-                          showDialog(
-                            barrierDismissible: false,
-                            context: context,
-                            builder: (_) => const Dialog(
-                              child: Padding(
-                                padding: EdgeInsets.all(20.0),
-                                child: Text("Starting tor..."),
+              Row(
+                children: [
+                  TextButton(
+                    onPressed: torIsRunning
+                        ? null
+                        : () async {
+                            unawaited(
+                              showDialog(
+                                barrierDismissible: false,
+                                context: context,
+                                builder: (_) => const Dialog(
+                                  child: Padding(
+                                    padding: EdgeInsets.all(20.0),
+                                    child: Text("Starting tor..."),
+                                  ),
+                                ),
                               ),
-                            ),
-                          ),
-                        );
+                            );
 
-                        final time = DateTime.now();
+                            final time = DateTime.now();
 
-                        print("NOW: $time");
+                            print("NOW: $time");
 
-                        await startTor();
+                            await startTor();
 
-                        print("Start tor took "
-                            "${DateTime.now().difference(time).inSeconds} "
-                            "seconds");
+                            print("Start tor took "
+                                "${DateTime.now().difference(time).inSeconds} "
+                                "seconds");
 
-                        if (mounted) {
-                          Navigator.of(context).pop();
-                        }
-                      },
-                child: const Text("Start tor"),
+                            if (mounted) {
+                              Navigator.of(context).pop();
+                            }
+                          },
+                    child: const Text("Start tor"),
+                  ),
+                  TextButton(
+                    onPressed: !torIsRunning
+                        ? null
+                        : () async {
+                            await Tor.instance.stop();
+                            setState(() {
+                              torIsRunning = false;
+                            });
+                          },
+                    child: const Text("Stop tor"),
+                  ),
+                ],
               ),
               Row(
                 children: [
