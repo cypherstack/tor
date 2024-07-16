@@ -212,68 +212,71 @@ class SOCKSSocket {
   /// Returns:
   ///   A Future that resolves to void.
   Future<void> connectTo(String domain, int port) async {
-    // Disable SSL for onion services.
-    if (domain.endsWith('.onion')) {
-      sslEnabled = false;
+    try {
+      // Disable SSL for onion services.
+      if (domain.endsWith('.onion')) {
+        sslEnabled = false;
+      }
+
+      // Construct the connect command.
+      var request = [
+        0x05, // SOCKS version.
+        0x01, // Connect command.
+        0x00, // Reserved.
+        0x03, // Domain name.
+        domain.length,
+        ...domain.codeUnits,
+        (port >> 8) & 0xFF,
+        port & 0xFF
+      ];
+
+      // Send the connect command to the SOCKS proxy server.
+      _socksSocket.add(request);
+
+      // Wait for server response.
+      var response = await _responseController.stream.first;
+      print('SOCKS5 connect response: $response');
+
+      // Check if the connection was successful.
+      if (response[1] != 0x00) {
+        throw Exception(
+            'socks_socket.connectTo(): Failed to connect to target through SOCKS5 proxy.');
+      }
+
+      // Upgrade to SSL if needed.
+      if (sslEnabled) {
+        // Upgrade to SSL.
+        _secureSocksSocket = await SecureSocket.secure(
+          _socksSocket,
+          host: domain,
+          // onBadCertificate: (_) => true, // Uncomment this to bypass certificate validation (NOT recommended for production).
+        );
+
+        // Listen to the secure socket.
+        _subscription = _secureSocksSocket.listen(
+          (data) {
+            // Add the data to the response controller.
+            _secureResponseController.add(data);
+          },
+          onError: (e) {
+            // Handle errors.
+            if (e is Object) {
+              _secureResponseController.addError(e);
+            }
+
+            // If the error is not an object, send the error as a string.
+            _secureResponseController.addError("$e");
+          },
+          onDone: () {
+            // Close the response controller when the socket is closed.
+            _secureResponseController.close();
+          },
+        );
+      }
+    } catch (e) {
+      print('Exception in connectTo: $e');
+      throw Exception('socks_socket.connectTo(): $e');
     }
-    
-    // Connect command.
-    var request = [
-      0x05, // SOCKS version.
-      0x01, // Connect command.
-      0x00, // Reserved.
-      0x03, // Domain name.
-      domain.length,
-      ...domain.codeUnits,
-      (port >> 8) & 0xFF,
-      port & 0xFF
-    ];
-
-    // Send the connect command to the SOCKS proxy server.
-    _socksSocket.add(request);
-
-    // Wait for server response.
-    var response = await _responseController.stream.first;
-
-    // Check if the connection was successful.
-    if (response[1] != 0x00) {
-      throw Exception(
-          'socks_socket.connectTo(): Failed to connect to target through SOCKS5 proxy.');
-    }
-
-    // Upgrade to SSL if needed.
-    if (sslEnabled) {
-      // Upgrade to SSL.
-      _secureSocksSocket = await SecureSocket.secure(
-        _socksSocket,
-        host: domain,
-        // onBadCertificate: (_) => true, // Uncomment this to bypass certificate validation (NOT recommended for production).
-      );
-
-      // Listen to the secure socket.
-      _subscription = _secureSocksSocket.listen(
-        (data) {
-          // Add the data to the response controller.
-          _secureResponseController.add(data);
-        },
-        onError: (e) {
-          // Handle errors.
-          if (e is Object) {
-            _secureResponseController.addError(e);
-          }
-
-          // If the error is not an object, send the error as a string.
-          _secureResponseController.addError("$e");
-          // TODO make sure sending error as string is acceptable.
-        },
-        onDone: () {
-          // Close the response controller when the socket is closed.
-          _secureResponseController.close();
-        },
-      );
-    }
-
-    return;
   }
 
   /// Converts [object] to a String by invoking [Object.toString] and
