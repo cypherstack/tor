@@ -39,7 +39,33 @@ class _MyAppState extends State<Home> {
   final hostController = TextEditingController(text: 'https://icanhazip.com/');
   // https://check.torproject.org is another good option.
 
-  Future<void> startTor() async {
+  // Set the default text for the onion input field
+  final onionController = TextEditingController(
+      text:
+          'https://cflarexljc3rw355ysrkrzwapozws6nre6xsy3n4yrj7taye3uiby3ad.onion');
+  // final onionController = TextEditingController(text: 'http://trocadorh642rks54sxufwy4kys23mrsgof3axowyro5ljb2dkgdlmad.onion:18089/');
+  // https://blog.cloudflare.com/cloudflare-onion-service/:
+  // cflarexljc3rw355ysrkrzwapozws6nre6xsy3n4yrj7taye3uiby3ad.onion
+  // cflarenuttlfuyn7imozr4atzvfbiw3ezgbdjdldmdx7srterayaozid.onion
+  // cflares35lvdlczhy3r6qbza5jjxbcplzvdveabhf7bsp7y4nzmn67yd.onion
+  // cflareusni3s7vwhq2f7gc4opsik7aa4t2ajedhzr42ez6uajaywh3qd.onion
+  // cflareki4v3lh674hq55k3n7xd4ibkwx3pnw67rr3gkpsonjmxbktxyd.onion
+  // cflarejlah424meosswvaeqzb54rtdetr4xva6mq2bm2hfcx5isaglid.onion
+  // cflaresuje2rb7w2u3w43pn4luxdi6o7oatv6r2zrfb5xvsugj35d2qd.onion
+  // cflareer7qekzp3zeyqvcfktxfrmncse4ilc7trbf6bp6yzdabxuload.onion
+  // cflareub6dtu7nvs3kqmoigcjdwap2azrkx5zohb2yk7gqjkwoyotwqd.onion
+  // cflare2nge4h4yqr3574crrd7k66lil3torzbisz6uciyuzqc2h2ykyd.onion
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(init());
+  }
+
+  Future<void> init() async {
+    // Get the app's documents directory.
+    final Directory appDocDir = await getApplicationDocumentsDirectory();
+
     // Start the Tor daemon.
     await Tor.instance.start(
       torDataDirPath: (await getApplicationSupportDirectory()).path,
@@ -57,6 +83,7 @@ class _MyAppState extends State<Home> {
   void dispose() {
     // Clean up the controller when the widget is disposed.
     hostController.dispose();
+    onionController.dispose();
     super.dispose();
   }
 
@@ -292,8 +319,46 @@ class _MyAppState extends State<Home> {
                 child: const Text(
                   "Connect to bitcoin onion node via socks socket",
                 ),
-              ),
-            ],
+                spacerSmall,
+                AbsorbPointer(
+                  absorbing: !torStarted, // Disable if tor hasn't started
+                  child: TextButton(
+                    onPressed: () async {
+                      // `socks5_proxy` package example, use another socks5
+                      // connection of your choice.
+
+                      // Create HttpClient object
+                      final client = HttpClient();
+
+                      // Assign connection factory.
+                      SocksTCPClient.assignToHttpClient(client, [
+                        ProxySettings(InternetAddress.loopbackIPv4, tor.port,
+                            password:
+                                null), // TODO Need to get from tor config file.
+                      ]);
+
+                      // GET request.
+                      final request =
+                          await client.getUrl(Uri.parse(onionController.text));
+                      final response = await request.close();
+
+                      // Print response.
+                      var responseString = await utf8.decodeStream(response);
+                      print(responseString);
+                      // If host input left to default icanhazip.com, a Tor
+                      // exit node IP should be printed to the console.
+                      //
+                      // https://check.torproject.org is also good for
+                      // doublechecking torability.
+
+                      // Close client
+                      client.close();
+                    },
+                    child: const Text("Make request to onion service"),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
