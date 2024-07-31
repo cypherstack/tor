@@ -89,7 +89,7 @@ class SOCKSSocket {
   StreamSubscription<List<int>>? get subscription => _subscription;
 
   /// Is SSL enabled?
-  bool sslEnabled;
+  final bool sslEnabled;
 
   /// Private constructor.
   SOCKSSocket._(this.proxyHost, this.proxyPort, this.sslEnabled);
@@ -178,7 +178,7 @@ class SOCKSSocket {
       },
       onDone: () {
         // Close the response controller when the socket is closed.
-        _responseController.close();
+        // _responseController.close();
       },
     );
   }
@@ -212,11 +212,6 @@ class SOCKSSocket {
   /// Returns:
   ///   A Future that resolves to void.
   Future<void> connectTo(String domain, int port) async {
-    // Disable SSL for onion services.
-    if (domain.endsWith('.onion')) {
-      sslEnabled = false;
-    }
-    
     // Connect command.
     var request = [
       0x05, // SOCKS version.
@@ -303,15 +298,19 @@ class SOCKSSocket {
   ///  A Future that resolves to void.
   Future<void> close() async {
     // Ensure all data is sent before closing.
-    //
-    // TODO test this.
-    if (sslEnabled) {
+    try {
+      if (sslEnabled) {
+        await _secureSocksSocket.flush();
+      }
       await _socksSocket.flush();
-      await _secureResponseController.close();
+    } finally {
+      await _subscription?.cancel();
+      await _socksSocket.close();
+      _responseController.close();
+      if (sslEnabled) {
+        _secureResponseController.close();
+      }
     }
-    await _socksSocket.flush();
-    await _responseController.close();
-    return await _socksSocket.close();
   }
 
   StreamSubscription<List<int>> listen(
