@@ -39,12 +39,11 @@ class _MyAppState extends State<Home> {
   final hostController = TextEditingController(text: 'https://icanhazip.com/');
   // https://check.torproject.org is another good option.
 
-  // Set the default text for the onion input field
+  // Set the default text for the onion input field.
   final onionController = TextEditingController(
       text:
           'https://cflarexljc3rw355ysrkrzwapozws6nre6xsy3n4yrj7taye3uiby3ad.onion');
-  // final onionController = TextEditingController(text: 'http://trocadorh642rks54sxufwy4kys23mrsgof3axowyro5ljb2dkgdlmad.onion:18089/');
-  // https://blog.cloudflare.com/cloudflare-onion-service/:
+  // See https://blog.cloudflare.com/cloudflare-onion-service/ for more options:
   // cflarexljc3rw355ysrkrzwapozws6nre6xsy3n4yrj7taye3uiby3ad.onion
   // cflarenuttlfuyn7imozr4atzvfbiw3ezgbdjdldmdx7srterayaozid.onion
   // cflares35lvdlczhy3r6qbza5jjxbcplzvdveabhf7bsp7y4nzmn67yd.onion
@@ -56,6 +55,12 @@ class _MyAppState extends State<Home> {
   // cflareub6dtu7nvs3kqmoigcjdwap2azrkx5zohb2yk7gqjkwoyotwqd.onion
   // cflare2nge4h4yqr3574crrd7k66lil3torzbisz6uciyuzqc2h2ykyd.onion
 
+  final bitcoinOnionController = TextEditingController(
+      text:
+          'qly7g5n5t3f3h23xvbp44vs6vpmayurno4basuu5rcvrupli7y2jmgid.onion:50001');
+  // For more options, see https://bitnodes.io/nodes/addresses/?q=onion and
+  // https://sethforprivacy.com/about/
+
   @override
   void initState() {
     super.initState();
@@ -63,9 +68,6 @@ class _MyAppState extends State<Home> {
   }
 
   Future<void> init() async {
-    // Get the app's documents directory.
-    final Directory appDocDir = await getApplicationDocumentsDirectory();
-
     // Start the Tor daemon.
     await Tor.instance.start(
       torDataDirPath: (await getApplicationSupportDirectory()).path,
@@ -85,6 +87,20 @@ class _MyAppState extends State<Home> {
     hostController.dispose();
     onionController.dispose();
     super.dispose();
+  }
+
+  Future<void> startTor() async {
+    // Start the Tor daemon.
+    await Tor.instance.start(
+      torDataDirPath: (await getApplicationSupportDirectory()).path,
+    );
+
+    // Toggle started flag.
+    setState(() {
+      torIsRunning = Tor.instance.status == TorStatus.on; // Update flag
+    });
+
+    print('Done awaiting; tor should be running');
   }
 
   @override
@@ -161,6 +177,7 @@ class _MyAppState extends State<Home> {
                     ),
                   ),
                   spacerSmall,
+                  // Proxied HTTP request button.
                   TextButton(
                     onPressed: torIsRunning
                         ? () async {
@@ -175,7 +192,7 @@ class _MyAppState extends State<Home> {
                               ProxySettings(InternetAddress.loopbackIPv4,
                                   Tor.instance.port,
                                   password:
-                                      null), // TODO Need to get from tor config file.
+                                      null), // TODO get from tor's config file.
                             ]);
 
                             // GET request.
@@ -259,106 +276,95 @@ class _MyAppState extends State<Home> {
                 ),
               ),
               spacerSmall,
-              TextButton(
-                onPressed: torIsRunning
-                    ? () async {
-                        String domain =
-                            "qly7g5n5t3f3h23xvbp44vs6vpmayurno4basuu5rcvrupli7y2jmgid.onion";
-                        int port = 50001;
-                        // See https://github.com/spesmilo/electrum/blob/master/electrum/servers.json#L375C6-L375C68
-
-                        // Instantiate a socks socket at localhost and on the port selected by the tor service.
-                        var socksSocket = await SOCKSSocket.create(
-                          proxyHost: InternetAddress.loopbackIPv4.address,
-                          proxyPort: Tor.instance.port,
-                          sslEnabled: !domain
-                              .endsWith(".onion"), // For SSL connections.
-                        );
-
-                        // Connect to the socks instantiated above.
-                        await socksSocket.connect();
-
-                        // Connect to onion node via socks socket.
-                        //
-                        // Note that this is an SSL example.
-                        await socksSocket.connectTo(domain, port);
-
-                        // Send a server features command to the connected socket, see method for more specific usage example..
-                        await socksSocket.sendServerFeaturesCommand();
-
-                        // You should see a server response printed to the console.
-                        //
-                        // Example response:
-                        // `flutter: secure responseData: {
-                        // 	"id": "0",
-                        // 	"jsonrpc": "2.0",
-                        // 	"result": {
-                        // 		"cashtokens": true,
-                        // 		"dsproof": true,
-                        // 		"genesis_hash": "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f",
-                        // 		"hash_function": "sha256",
-                        // 		"hosts": {
-                        // 			"bitcoin.stackwallet.com": {
-                        // 				"ssl_port": 50002,
-                        // 				"tcp_port": 50001,
-                        // 				"ws_port": 50003,
-                        // 				"wss_port": 50004
-                        // 			}
-                        // 		},
-                        // 		"protocol_max": "1.5",
-                        // 		"protocol_min": "1.4",
-                        // 		"pruning": null,
-                        // 		"server_version": "Fulcrum 1.9.1"
-                        // 	}
-                        // }
-
-                        // Close the socket.
-                        await socksSocket.close();
-                      }
-                    : null,
-                child: const Text(
-                  "Connect to bitcoin onion node via socks socket",
-                ),
-                spacerSmall,
-                AbsorbPointer(
-                  absorbing: !torStarted, // Disable if tor hasn't started
-                  child: TextButton(
-                    onPressed: () async {
-                      // `socks5_proxy` package example, use another socks5
-                      // connection of your choice.
-
-                      // Create HttpClient object
-                      final client = HttpClient();
-
-                      // Assign connection factory.
-                      SocksTCPClient.assignToHttpClient(client, [
-                        ProxySettings(InternetAddress.loopbackIPv4, tor.port,
-                            password:
-                                null), // TODO Need to get from tor config file.
-                      ]);
-
-                      // GET request.
-                      final request =
-                          await client.getUrl(Uri.parse(onionController.text));
-                      final response = await request.close();
-
-                      // Print response.
-                      var responseString = await utf8.decodeStream(response);
-                      print(responseString);
-                      // If host input left to default icanhazip.com, a Tor
-                      // exit node IP should be printed to the console.
-                      //
-                      // https://check.torproject.org is also good for
-                      // doublechecking torability.
-
-                      // Close client
-                      client.close();
-                    },
-                    child: const Text("Make request to onion service"),
+              Row(
+                children: [
+                  // Bitcoin onion input field.
+                  Expanded(
+                    child: TextField(
+                      controller: bitcoinOnionController,
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
+                        hintText: 'Bitcoin onion address to test',
+                      ),
+                    ),
                   ),
-                ),
-              ],
-            ),
+                  spacerSmall,
+                  TextButton(
+                    onPressed: torIsRunning
+                        ? () async {
+                            // Validate the onion address.www
+                            if (!onionController.text.contains(".onion")) {
+                              print("Invalid onion address");
+                              return;
+                            } else if (!onionController.text.contains(":")) {
+                              print("Invalid onion address (needs port)");
+                              return;
+                            }
+
+                            String domain =
+                                bitcoinOnionController.text.split(":").first;
+                            int port = int.parse(
+                                bitcoinOnionController.text.split(":").last);
+
+                            // Instantiate a socks socket at localhost and on the port selected by the tor service.
+                            var socksSocket = await SOCKSSocket.create(
+                              proxyHost: InternetAddress.loopbackIPv4.address,
+                              proxyPort: Tor.instance.port,
+                              sslEnabled: !domain
+                                  .endsWith(".onion"), // For SSL connections.
+                            );
+
+                            // Connect to the socks instantiated above.
+                            await socksSocket.connect();
+
+                            // Connect to onion node via socks socket.
+                            //
+                            // Note that this is an SSL example.
+                            await socksSocket.connectTo(domain, port);
+
+                            // Send a server features command to the connected socket, see method for more specific usage example..
+                            await socksSocket.sendServerFeaturesCommand();
+
+                            // You should see a server response printed to the console.
+                            //
+                            // Example response:
+                            // `flutter: secure responseData: {
+                            // 	"id": "0",
+                            // 	"jsonrpc": "2.0",
+                            // 	"result": {
+                            // 		"cashtokens": true,
+                            // 		"dsproof": true,
+                            // 		"genesis_hash": "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f",
+                            // 		"hash_function": "sha256",
+                            // 		"hosts": {
+                            // 			"bitcoin.stackwallet.com": {
+                            // 				"ssl_port": 50002,
+                            // 				"tcp_port": 50001,
+                            // 				"ws_port": 50003,
+                            // 				"wss_port": 50004
+                            // 			}
+                            // 		},
+                            // 		"protocol_max": "1.5",
+                            // 		"protocol_min": "1.4",
+                            // 		"pruning": null,
+                            // 		"server_version": "Fulcrum 1.9.1"
+                            // 	}
+                            // }
+
+                            // Close the socket.
+                            await socksSocket.close();
+                          }
+
+                        // A mutex should be added to this example to prevent
+                        // multiple connections from being made at once.  TODO
+                        : null,
+                    child: const Text(
+                      "Test Bitcoin onion node connection",
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
       ),
