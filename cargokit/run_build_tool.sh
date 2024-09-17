@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 set -e
 
@@ -42,6 +42,12 @@ void main(List<String> args) {
 }
 EOF
 
+# Create alias for `shasum` if it does not exist and `sha1sum` exists
+if ! [ -x "$(command -v shasum)" ] && [ -x "$(command -v sha1sum)" ]; then
+  shopt -s expand_aliases
+  alias shasum="sha1sum"
+fi
+
 # Dart run will not cache any package that has a path dependency, which
 # is the case for our build_tool_runner. So instead we precompile the package
 # ourselves.
@@ -64,7 +70,6 @@ if [ -f "$PACKAGE_HASH_FILE" ]; then
     fi
 fi
 
-
 # Run pub get if needed.
 if [ ! -f "$PACKAGE_HASH_FILE" ]; then
     "$DART" pub get --no-precompile
@@ -72,4 +77,18 @@ if [ ! -f "$PACKAGE_HASH_FILE" ]; then
     echo "$PACKAGE_HASH" > "$PACKAGE_HASH_FILE"
 fi
 
+set +e
+
 "$DART" bin/build_tool_runner.dill "$@"
+
+exit_code=$?
+
+# 253 means invalid snapshot version.
+if [ $exit_code == 253 ]; then
+  "$DART" pub get --no-precompile
+  "$DART" compile kernel bin/build_tool_runner.dart
+  "$DART" bin/build_tool_runner.dill "$@"
+  exit_code=$?
+fi
+
+exit $exit_code

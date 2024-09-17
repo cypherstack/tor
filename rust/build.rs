@@ -63,7 +63,7 @@ fn android_on_linux_check() {
         };
 
         let link_search_glob = format!(
-            "{}/toolchains/llvm/prebuilt/{}-x86_64/lib64/clang/**/lib/linux",
+            "{}/toolchains/llvm/prebuilt/{}-x86_64/lib/clang/**/lib/linux",
             ndk_home, os
         );
 

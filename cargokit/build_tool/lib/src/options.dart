@@ -44,31 +44,10 @@ class SourceSpanException implements Exception {
   }
 }
 
-typedef Toolchain = String;
-
-Toolchain? _parseToolchain(String string) {
-  if (string.isEmpty) {
-    return null;
-  }
-
-  switch (string) {
-    case "stable":
-    case "beta":
-    case "nightly":
-      return string;
-    default:
-      final parts = string.split(".");
-      if (parts.length != 3) {
-        return null;
-      }
-      for (final value in parts) {
-        if (int.tryParse(value) == null) {
-          return null;
-        }
-      }
-      // probably a legit version
-      return string;
-  }
+enum Toolchain {
+  stable,
+  beta,
+  nightly,
 }
 
 class CargoBuildOptions {
@@ -81,22 +60,23 @@ class CargoBuildOptions {
   });
 
   static Toolchain _toolchainFromNode(YamlNode node) {
-    String? name1;
     if (node case YamlScalar(value: String name)) {
-      name1 = name;
-      final toolchain = _parseToolchain(name);
+      final toolchain =
+          Toolchain.values.firstWhereOrNull((element) => element.name == name);
       if (toolchain != null) {
         return toolchain;
       }
     }
-    throw SourceSpanException('Unknown toolchain: $name1', node.span);
+    throw SourceSpanException(
+        'Unknown toolchain. Must be one of ${Toolchain.values.map((e) => e.name)}.',
+        node.span);
   }
 
   static CargoBuildOptions parse(YamlNode node) {
     if (node is! YamlMap) {
       throw SourceSpanException('Cargo options must be a map', node.span);
     }
-    Toolchain toolchain = "stable";
+    Toolchain toolchain = Toolchain.stable;
     List<String> flags = [];
     for (final MapEntry(:key, :value) in node.nodes.entries) {
       if (key case YamlScalar(value: 'toolchain')) {
