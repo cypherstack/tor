@@ -1,5 +1,0 @@
-cargo:
-  debug: # Configuration of cargo execution during debug builds
-    toolchain: "1.74.0"
-  release: # Configuration of cargo execution for release builds
-    toolchain: "1.74.0"
