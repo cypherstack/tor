@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 // Imports needed for tor usage:
 import 'package:socks5_proxy/socks_client.dart'; // Just for example; can use any socks5 proxy package, pick your favorite.
+import 'package:socks_socket/socks_socket.dart';
 import 'package:tor_ffi_plugin/tor_ffi_plugin.dart';
 
 void main() {
