@@ -174,9 +174,16 @@ class Tor {
 
   /// Stop the proxy.
   stop() async {
+    // Return early if already stopped.
+    if (_proxyPtr == nullptr) {
+      return;
+    }
+
     final lib = TorFfiPluginBindings(_lib);
     lib.tor_proxy_stop(_proxyPtr);
     _proxyPtr = nullptr;
+    _bootstrapped = false;
+    _status = TorStatus.off;
   }
 
   setClientDormant(bool dormant) async {
