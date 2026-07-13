@@ -6,7 +6,6 @@ import 'dart:async';
 import 'dart:ffi';
 import 'dart:io';
 import 'dart:isolate';
-import 'dart:math';
 
 import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
@@ -199,16 +198,16 @@ class Tor {
   Pointer<Void> _proxyPtr = nullptr;
 
   Future<int?> _getRandomUnusedPort({List<int> excluded = const []}) async {
-    var random = Random.secure();
-    int potentialPort = 0;
+    int port = 0;
 
     retry:
-    while (potentialPort <= 0 || excluded.contains(potentialPort)) {
-      potentialPort = random.nextInt(65535);
+    while (port == 0 || excluded.contains(port)) {
       try {
-        var socket = await ServerSocket.bind("0.0.0.0", potentialPort);
+        // Bind to port 0 to let the OS assign a free port.
+        var socket = await ServerSocket.bind("0.0.0.0", 0);
+        port = socket.port;
         socket.close();
-        return potentialPort;
+        return port;
       } catch (_) {
         continue retry;
       }
