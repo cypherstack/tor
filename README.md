@@ -1,7 +1,8 @@
 <!--
 SPDX-FileCopyrightText: 2022-2023 Foundation Devices Inc.
+SPDX-FileCopyrightText: 2024 Foundation Devices Inc.
 
-SPDX-License-Identifier: GPL-3.0-or-later
+SPDX-License-Identifier: MIT
 -->
 
 # tor
@@ -12,7 +13,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 ### [Install rust](https://www.rust-lang.org/tools/install)
 
-Use `rustup`, not `homebrew`.  Install toolchain 1.74.
+Use `rustup`, not `homebrew`.
 
 ### Install cargo ndk
 
@@ -31,11 +32,10 @@ git subtree pull --prefix cargokit https://github.com/irondash/cargokit.git main
 
 ## Development
 
-To generate `tor_ffi_plugin.h` C bindings for Rust, `cbindgen --config cbindgen.toml --crate tor-ffi --output target/tor_ffi_plugin.h` or `cargo build` in `native/tor-ffi` to produce headers according to `build.rs`.
-To generate `tor_bindings_generated.dart` Dart bindings for C, `flutter pub run ffigen --config ffigen.yaml`.  You will probably need to manually edit the `Tor` class to be `final`.
+To (re)generate Dart bindings run `just generate`
 
 ## Example app
 
 `flutter run` in `example` to run the example app
 
-See `example/lib/main.dart` for usage.  Must run the build script for your platform first.
+See `example/lib/main.dart` for usage.

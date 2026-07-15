@@ -1,5 +1,9 @@
-name: tor_ffi_plugin_example
-description: Demonstrates how to use the tor_ffi_plugin plugin.
+# SPDX-FileCopyrightText: 2024 Foundation Devices Inc.
+#
+# SPDX-License-Identifier: MIT
+
+name: tor_example
+description: Demonstrates how to use the tor plugin.
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -33,7 +37,7 @@ dependencies:
 
   tor_ffi_plugin:
     # When depending on this package from a real application you should use:
-    #   tor_ffi_plugin: ^x.y.z
+    #   tor: ^x.y.z
     # See https://dart.dev/tools/pub/dependencies#version-constraints
     # The example app is bundled with the plugin so we use a path dependency on
     # the parent directory to use the current plugin's version.
@@ -43,8 +47,6 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.2
   socks5_proxy: 1.0.3+dev.3
-  path_provider: ^2.1.1
-  socks_socket: ^1.1.0
 
 dev_dependencies:
   flutter_test:
@@ -55,7 +57,7 @@ dev_dependencies:
   # activated in the `analysis_options.yaml` file located at the root of your
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
-  flutter_lints: ^4.0.0
+  flutter_lints: ^2.0.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

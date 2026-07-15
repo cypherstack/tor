@@ -1,33 +1,33 @@
-# SPDX-FileCopyrightText: 2022 Foundation Devices Inc.
+# SPDX-FileCopyrightText: 2024 Foundation Devices Inc.
 #
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 
 [package]
-name = "tor_ffi_plugin"
-version = "0.1.0"
-authors = ["Igor Cota <igor@foundationdevices.com>"]
+name = "rust_lib_tor"
+version = "0.2.0"
+authors = ["Igor Cota <igor@foundation.xyz>"]
 edition = "2021"
 
 [lib]
-crate-type = ["cdylib", "staticlib"]
+crate-type = ["cdylib", "staticlib", "rlib"]
 
 [dependencies]
+flutter_rust_bridge = "=2.11.1"
 lazy_static = "1.4"
 tokio = { version = "1", features = ["full"] }
-arti-client = { version = "0.33.0", features = ["static", "onion-service-client"] }
-arti = { version = "1.4.6", features = ["experimental-api", "static"] }
-tor-rtcompat = { version = "0.33.0", features = ["static", "native-tls", "tokio"] }
-tor-config = "=0.33.0"
+arti-client = { version = "0.36.0", features = ["static", "onion-service-client"] }
+arti = { version = "1.7.0", features = ["experimental-api", "static"] }
+tor-rtcompat = { version = "0.36.0", features = ["static"] }
+tor-config = "0.36.0"
 log = "0.4.20"
-lzma-sys = { version = "0.1.20", features = ["static"] }
-#android_log-sys = "0.3.1"
 rlimit = "0.10.1"
 anyhow = "1.0.79"
+time = "0.3.36"
+thiserror = "1.0"
 
 [target.'cfg(target_os = "ios")'.dependencies]
 # Specific version for iOS
 security-framework = "=2.10.0"
 
-[build-dependencies]
-cbindgen = "= 0.24.3"
-glob = "0.3.1"
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }
