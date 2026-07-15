@@ -6,7 +6,7 @@
 # Run `pod lib lint rust_lib_tor.podspec` to validate before publishing.
 #
 Pod::Spec.new do |s|
-  s.name             = 'tor'
+  s.name             = 'tor_ffi_plugin'
   s.version          = '0.0.1'
   s.summary          = 'Rust library for Tor proxy'
   s.description      = <<-DESC
@@ -21,12 +21,11 @@ Rust library providing Tor proxy functionality via arti.
   # paths, so Classes contains a forwarder C file that relatively imports
   # `../src/*` so that the C sources can be shared among all target platforms.
   s.source           = { :path => '.' }
-  s.source_files = 'Classes/**/*'
-  s.dependency 'Flutter'
-  s.platform = :ios, '11.0'
+  s.source_files     = 'Classes/**/*'
+  s.dependency 'FlutterMacOS'
 
-  # Flutter.framework does not contain a i386 slice.
-  s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES', 'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386' }
+  s.platform = :osx, '10.11'
+  s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES' }
   s.swift_version = '5.0'
 
   s.script_phase = {
@@ -41,8 +40,12 @@ Rust library providing Tor proxy functionality via arti.
   }
   s.pod_target_xcconfig = {
     'DEFINES_MODULE' => 'YES',
-    # Flutter.framework does not contain a i386 slice.
-    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386',
     'OTHER_LDFLAGS' => '-force_load ${BUILT_PRODUCTS_DIR}/librust_lib_tor.a',
+    # Strip the large static Rust library from release builds to reduce the
+    # shipped binary size.
+    'DEAD_CODE_STRIPPING' => 'YES',
+    'STRIP_INSTALLED_PRODUCT[config=Release][sdk=*][arch=*]' => 'YES',
+    'STRIP_STYLE[config=Release][sdk=*][arch=*]' => 'non-global',
+    'DEPLOYMENT_POSTPROCESSING[config=Release][sdk=*][arch=*]' => 'YES',
   }
 end

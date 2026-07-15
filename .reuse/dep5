@@ -1,7 +1,7 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
-Upstream-Name: tor
+Upstream-Name: tor_ffi_plugin
 Upstream-Contact: Igor Cota <igor@foundationdevices.com>
-Source: https://github.com/Foundation-Devices/tor
+Source: https://github.com/cypherstack/tor
 
 Files: cargokit/*
 Copyright: 2022 Matej Knopp

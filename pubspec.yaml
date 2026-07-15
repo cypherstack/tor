@@ -2,10 +2,10 @@
 #
 # SPDX-License-Identifier: MIT
 
-name: tor
+name: tor_ffi_plugin
 description: A multi-platform Flutter plugin for managing a Tor proxy. Based on arti.
 version: 0.2.0
-homepage: https://github.com/Foundation-Devices/tor
+homepage: https://github.com/cypherstack/tor
 
 environment:
   sdk: '>=3.3.0 <4.0.0'

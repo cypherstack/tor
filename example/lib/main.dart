@@ -11,9 +11,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 // Example application dependencies you can replace with any that works for you:
 import 'package:socks5_proxy/socks_client.dart';
-import 'package:tor/socks_socket.dart';
+import 'package:tor_ffi_plugin/socks_socket.dart';
 // The only real import needed for basic usage:
-import 'package:tor/tor.dart'; // This would go at the top, but dart autoformatter doesn't like it there.
+import 'package:tor_ffi_plugin/tor.dart'; // This would go at the top, but dart autoformatter doesn't like it there.
 
 void main() {
   runApp(const MyApp());
