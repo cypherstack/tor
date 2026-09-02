@@ -1,6 +1,6 @@
 name: tor_ffi_plugin
 description: Tor FFI plugin for Dart and Flutter.  Uses Arti (A Rust Tor Implementation) via FFI.
-version: 0.0.1
+version: 0.1.0
 homepage: https://github.com/cypherstack/tor
 
 environment:
