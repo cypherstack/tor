@@ -12,30 +12,19 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 ### [Install rust](https://www.rust-lang.org/tools/install)
 
-Use `rustup`, not `homebrew`.  Install toolchain 1.74.
+Use `rustup`, not `homebrew`.  The toolchain and cross-compilation targets pinned in `rust/rust-toolchain.toml` are installed automatically on first build.
 
-### Install cargo ndk
+### Building
 
-```sh
-cargo install cargo-ndk
-```
-
-### Cargokit
-
-[Cargokit](https://github.com/irondash/cargokit) handles building, just `flutter run` it or run it in Android Studio or VS Code (untested).
-
-To update Cargokit in the future, use:
-```sh
-git subtree pull --prefix cargokit https://github.com/irondash/cargokit.git main --squash
-```
+The Rust library is built and bundled by Flutter's native assets support (see `hook/build.dart`), so just `flutter run` or build as usual.  Requires Flutter 3.47.2 or later; Android builds need NDK 27 or later.
 
 ## Development
 
-To generate `tor_ffi_plugin.h` C bindings for Rust, `cbindgen --config cbindgen.toml --crate tor-ffi --output target/tor_ffi_plugin.h` or `cargo build` in `native/tor-ffi` to produce headers according to `build.rs`.
-To generate `tor_bindings_generated.dart` Dart bindings for C, `flutter pub run ffigen --config ffigen.yaml`.  You will probably need to manually edit the `Tor` class to be `final`.
+To generate `tor_ffi_plugin.h` C bindings for Rust, `cargo build` in `rust` to produce headers according to `build.rs`.
+To generate `tor_ffi_plugin_bindings_generated.dart` Dart bindings for C, `dart run ffigen --config ffigen.yaml`.
 
 ## Example app
 
 `flutter run` in `example` to run the example app
 
-See `example/lib/main.dart` for usage.  Must run the build script for your platform first.
+See `example/lib/main.dart` for usage.

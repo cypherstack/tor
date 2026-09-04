@@ -9,6 +9,7 @@ authors = ["Igor Cota <igor@foundationdevices.com>"]
 edition = "2021"
 
 [lib]
+name = "tor_ffi_plugin"
 crate-type = ["cdylib", "staticlib"]
 
 [dependencies]

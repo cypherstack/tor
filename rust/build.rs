@@ -51,9 +51,10 @@ fn android_on_linux_check() {
         let ndk_home = if let Some(value) = ndk_home_result.ok()  {
             value
         } else {
-            println!("ANDROID_NDK_HOME not set. Trying _CARGOKIT_NDK_LINK_CLANG");
-            let path_to_parse_with_hack = env::var("_CARGOKIT_NDK_LINK_CLANG")
-                .expect("_CARGOKIT_NDK_LINK_CLANG not set");
+            println!("ANDROID_NDK_HOME not set. Trying CC_x86_64_linux_android");
+            let path_to_parse_with_hack = env::var("CC_x86_64_linux_android")
+                .expect("CC_x86_64_linux_android not set")
+                .replace('\\', "/");
 
             path_to_parse_with_hack
                 .split("/toolchains/")

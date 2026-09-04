@@ -9,29 +9,13 @@ import 'dart:isolate';
 import 'dart:math';
 
 import 'package:ffi/ffi.dart';
-import 'package:flutter/foundation.dart';
-import 'package:tor_ffi_plugin/tor_ffi_plugin_bindings_generated.dart';
-
-DynamicLibrary _load(name) {
-  if (Platform.isAndroid || Platform.isLinux) {
-    return DynamicLibrary.open('lib$name.so');
-  } else if (Platform.isIOS || Platform.isMacOS) {
-    return DynamicLibrary.open('$name.framework/$name');
-  } else if (Platform.isWindows) {
-    return DynamicLibrary.open('$name.dll');
-  } else {
-    throw NotSupportedPlatform('${Platform.operatingSystem} is not supported!');
-  }
-}
+import 'package:tor_ffi_plugin/tor_ffi_plugin_bindings_generated.dart'
+    as bindings;
 
 class CouldntBootstrapDirectory implements Exception {
   String? rustError;
 
   CouldntBootstrapDirectory({this.rustError});
-}
-
-class NotSupportedPlatform implements Exception {
-  NotSupportedPlatform(String s);
 }
 
 enum TorStatus {
@@ -42,18 +26,10 @@ enum TorStatus {
 
 class Tor {
   /// Private constructor for the Tor class.
-  Tor._() {
-    _lib = _load(_libName);
-    if (kDebugMode) {
-      print("Native tor library loaded!");
-    }
-  }
+  Tor._();
 
   /// Singleton instance of the Tor class.
   static final Tor instance = Tor._();
-
-  static const String _libName = "tor_ffi_plugin";
-  static late DynamicLibrary _lib;
 
   /// Status of the tor proxy service
   TorStatus get status => _status;
@@ -110,22 +86,18 @@ class Tor {
 
       // Start the Tor service in an isolate.
       final tor = await Isolate.run(() async {
-        // Load the Tor library.
-        var lib = TorFfiPluginBindings(_load(_libName));
-
         // Start the Tor service.
-        final ptr = lib.tor_start(
+        final tor = bindings.tor_start(
             newPort,
             stateDir.path.toNativeUtf8() as Pointer<Char>,
             cacheDir.path.toNativeUtf8() as Pointer<Char>);
 
         // Throw an exception if the Tor service fails to start.
-        if (ptr == nullptr) {
-          throwRustException(lib);
+        if (tor.client == nullptr) {
+          throwRustException();
         }
 
-        // Return the pointer.
-        return ptr;
+        return tor;
       });
 
       // Set the client pointer and started flag.
@@ -155,15 +127,12 @@ class Tor {
   ///
   /// Returns void.
   void _bootstrap() {
-    // Load the Tor library.
-    final lib = TorFfiPluginBindings(_lib);
-
     // Bootstrap the Tor service.
-    _bootstrapped = lib.tor_client_bootstrap(_clientPtr);
+    _bootstrapped = bindings.tor_client_bootstrap(_clientPtr);
 
     // Throw an exception if the Tor service fails to bootstrap.
     if (!_bootstrapped) {
-      throwRustException(lib);
+      throwRustException();
     }
   }
 
@@ -174,8 +143,7 @@ class Tor {
 
   /// Stop the proxy.
   stop() async {
-    final lib = TorFfiPluginBindings(_lib);
-    lib.tor_proxy_stop(_proxyPtr);
+    bindings.tor_proxy_stop(_proxyPtr);
     _proxyPtr = nullptr;
   }
 
@@ -184,8 +152,7 @@ class Tor {
       throw ClientNotActive();
     }
 
-    final lib = TorFfiPluginBindings(_lib);
-    lib.tor_client_set_dormant(_clientPtr, dormant);
+    bindings.tor_client_set_dormant(_clientPtr, dormant);
   }
 
   Pointer<Void> _clientPtr = nullptr;
@@ -216,8 +183,9 @@ class Tor {
   //   // if (enabled && started && circuitEstablished) {}
   // }
 
-  static void throwRustException(TorFfiPluginBindings lib) {
-    String rustError = lib.tor_last_error_message().cast<Utf8>().toDartString();
+  static void throwRustException() {
+    String rustError =
+        bindings.tor_last_error_message().cast<Utf8>().toDartString();
 
     throw _getRustException(rustError);
   }
@@ -231,7 +199,7 @@ class Tor {
   }
 
   void hello() {
-    TorFfiPluginBindings(_lib).tor_hello();
+    bindings.tor_hello();
   }
 }
 
