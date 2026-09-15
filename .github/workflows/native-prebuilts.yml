@@ -1,0 +1,176 @@
+name: Build native prebuilts
+
+on:
+  push:
+    tags: ['native-*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-prebuilts-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.event.deleted != true
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {target: x86_64-unknown-linux-gnu, runner: ubuntu-22.04}
+          - {target: aarch64-unknown-linux-gnu, runner: ubuntu-24.04-arm}
+          - {target: x86_64-pc-windows-msvc, runner: windows-2022}
+          - {target: aarch64-apple-darwin, runner: macos-15}
+          - {target: x86_64-apple-darwin, runner: macos-15-intel}
+          - {target: aarch64-apple-ios, runner: macos-15}
+          - {target: aarch64-apple-ios-sim, runner: macos-15}
+          - {target: x86_64-apple-ios, runner: macos-15-intel}
+          - {target: armv7-linux-androideabi, runner: ubuntu-22.04}
+          - {target: aarch64-linux-android, runner: ubuntu-22.04}
+          - {target: x86_64-linux-android, runner: ubuntu-22.04}
+    env:
+      NATIVE_TARGET: ${{ matrix.target }}
+      CARGO_TARGET_DIR: ${{ github.workspace }}/rust/target
+      MACOSX_DEPLOYMENT_TARGET: '11.0'
+      IPHONEOS_DEPLOYMENT_TARGET: '13.0'
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Use short Windows build paths
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          git config --global core.longpaths true
+          New-Item -ItemType Directory -Force C:\c, C:\t, C:\tmp | Out-Null
+          "CARGO_HOME=C:/c" >> $env:GITHUB_ENV
+          "CARGO_TARGET_DIR=C:/t" >> $env:GITHUB_ENV
+          "TEMP=C:\tmp" >> $env:GITHUB_ENV
+          "TMP=C:\tmp" >> $env:GITHUB_ENV
+      - uses: actions/checkout@v6
+      - name: Install Linux prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config perl
+      - name: Install Android NDK
+        if: contains(matrix.target, 'android')
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'ndk;28.2.13676358'
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+      - name: Install pinned Rust toolchain
+        run: |
+          toolchain=$(sed -n 's/^channel = "\([^"]*\)".*/\1/p' rust/rust-toolchain.toml)
+          rustup toolchain install "$toolchain" --profile minimal --target "$NATIVE_TARGET"
+          echo "RUSTUP_TOOLCHAIN=$toolchain" >> "$GITHUB_ENV"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+          key: ${{ matrix.target }}
+          # Windows output lives outside the workspace; cache its downloads only.
+          cache-targets: ${{ runner.os != 'Windows' }}
+      - name: Build and package
+        run: |
+          case "$NATIVE_TARGET" in
+            *android*)
+              ndk_bin="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
+              export PATH="$ndk_bin:$PATH"
+              key=${NATIVE_TARGET//-/_}
+              clang_target=${NATIVE_TARGET/armv7-/armv7a-}
+              export "CC_$key=$ndk_bin/${clang_target}24-clang"
+              export "CXX_$key=$ndk_bin/${clang_target}24-clang++"
+              export "AR_$key=$ndk_bin/llvm-ar"
+              export "RANLIB_$key=$ndk_bin/llvm-ranlib"
+              export "CARGO_TARGET_$(echo "$key" | tr '[:lower:]' '[:upper:]')_LINKER=$ndk_bin/${clang_target}24-clang"
+              export RUSTFLAGS='-C link-arg=-Wl,-z,max-page-size=16384'
+              ;;
+            *apple*)
+              export RUSTFLAGS='-C link-arg=-Wl,-install_name,@rpath/libtor_ffi_plugin.dylib'
+              case "$NATIVE_TARGET" in
+                aarch64-apple-ios) SDKROOT=$(xcrun --sdk iphoneos --show-sdk-path) ;;
+                *-ios*) SDKROOT=$(xcrun --sdk iphonesimulator --show-sdk-path) ;;
+              esac
+              export SDKROOT
+              ;;
+          esac
+          cargo build --locked --release --lib --manifest-path rust/Cargo.toml \
+            --target "$NATIVE_TARGET"
+          case "$NATIVE_TARGET" in
+            *windows*) library=tor_ffi_plugin.dll ;;
+            *apple*) library=libtor_ffi_plugin.dylib ;;
+            *) library=libtor_ffi_plugin.so ;;
+          esac
+          mkdir -p artifacts
+          cp "$CARGO_TARGET_DIR/$NATIVE_TARGET/release/$library" "artifacts/$NATIVE_TARGET-$library"
+      - name: Smoke test desktop library
+        if: ${{ !contains(matrix.target, 'android') && !contains(matrix.target, '-ios') }}
+        run: |
+          python - <<'PY'
+          import ctypes
+          from pathlib import Path
+          library = ctypes.CDLL(str(next(Path('artifacts').iterdir()).resolve()))
+          library.tor_proxy_stop.argtypes = [ctypes.c_void_p]
+          library.tor_proxy_stop.restype = None
+          library.tor_proxy_stop(None)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prebuilt-${{ matrix.target }}
+          path: artifacts/*
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: prebuilt-*
+          path: artifacts
+          merge-multiple: true
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.2'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Generate manifest
+        run: dart --packages=.dart_tool/package_config.json tool/prebuilt_manifest.dart artifacts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-release
+          path: artifacts/*
+          if-no-files-found: error
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/native-')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          [[ "$RELEASE_TAG" =~ ^native-[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || exit 1
+          read -r manifest_pin _ < artifacts/manifest.sha256
+          cat > "$RUNNER_TEMP/release-notes.md" <<EOF
+          Native libraries built from $GITHUB_SHA. Use the matching package revision.
+
+          Add to your app's root pubspec.yaml:
+
+              hooks:
+                user_defines:
+                  tor_ffi_plugin:
+                    native_build: prebuilt
+                    prebuilt_manifest_url: "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/manifest.json"
+                    prebuilt_manifest_sha256: "$manifest_pin"
+
+          See README.md for supported platforms and deployment minimums.
+          EOF
+          gh release create "$RELEASE_TAG" artifacts/* --verify-tag --latest=false \
+            --title "$RELEASE_TAG" --notes-file "$RUNNER_TEMP/release-notes.md"

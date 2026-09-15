@@ -11,6 +11,8 @@ dependencies:
   flutter:
     sdk: flutter
   ffi: ^2.0.1
+  code_assets: ^1.2.1
+  crypto: ^3.0.7
   hooks: ^2.0.2
   native_toolchain_rust: ^1.0.6
 
