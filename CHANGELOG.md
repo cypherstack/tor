@@ -1,3 +1,7 @@
+## 0.2.0
+
+* Bump arti to 2.6.0; needs Rust 1.91.
+
 ## 0.1.0
 
 * Build the Rust core with Flutter native assets instead of cargokit.
