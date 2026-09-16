@@ -3,17 +3,18 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::error::update_last_error;
-use arti::socks;
+use arti::proxy::{run_proxy_with_listeners, ListenProtocols};
 use arti_client::config::CfgPath;
 use arti_client::{DormantMode, TorClient, TorClientConfig};
 use lazy_static::lazy_static;
 use std::ffi::{c_char, c_void, CStr};
+use std::sync::Arc;
 use std::{io, ptr};
 use tokio::runtime::{Builder, Runtime};
 use tokio::task::JoinHandle;
 use tor_config::Listen;
 use tor_rtcompat::tokio::TokioNativeTlsRuntime;
-use tor_rtcompat::ToplevelBlockOn;
+use tor_rtcompat::{NetStreamProvider, TcpListenOptions, ToplevelBlockOn};
 
 pub use crate::error::tor_last_error_message;
 #[cfg(not(target_os = "windows"))]
@@ -70,8 +71,8 @@ pub unsafe extern "C" fn tor_start(
         err_ret
     );
 
-    let proxy_handle_box = Box::new(start_proxy(socks_port, client.clone()));
-    let client_box = Box::new(client.clone());
+    let proxy_handle_box = Box::new(start_proxy(socks_port, Arc::clone(&client)));
+    let client_box = Box::new(client);
 
     Tor {
         client: Box::into_raw(client_box) as *mut c_void,
@@ -83,7 +84,7 @@ pub unsafe extern "C" fn tor_start(
 pub unsafe extern "C" fn tor_client_bootstrap(client: *mut c_void) -> bool {
     let client = {
         assert!(!client.is_null());
-        Box::from_raw(client as *mut TorClient<TokioNativeTlsRuntime>)
+        Box::from_raw(client as *mut Arc<TorClient<TokioNativeTlsRuntime>>)
     };
 
     unwrap_or_return!(client.runtime().block_on(client.bootstrap()), false);
@@ -94,7 +95,7 @@ pub unsafe extern "C" fn tor_client_bootstrap(client: *mut c_void) -> bool {
 pub unsafe extern "C" fn tor_client_set_dormant(client: *mut c_void, soft_mode: bool) {
     let client = {
         assert!(!client.is_null());
-        Box::from_raw(client as *mut TorClient<TokioNativeTlsRuntime>)
+        Box::from_raw(client as *mut Arc<TorClient<TokioNativeTlsRuntime>>)
     };
 
     let dormant_mode = if soft_mode {
@@ -119,16 +120,35 @@ pub unsafe extern "C" fn tor_proxy_stop(proxy: *mut c_void) {
 
 fn start_proxy(
     port: u16,
-    client: TorClient<TokioNativeTlsRuntime>,
+    client: Arc<TorClient<TokioNativeTlsRuntime>>,
 ) -> JoinHandle<anyhow::Result<()>> {
     println!("Starting proxy!");
     let rt = RUNTIME.as_ref().unwrap();
-    rt.spawn(socks::run_socks_proxy(
-        client.runtime().clone(),
-        client.clone(),
-        Listen::new_localhost(port),
-        None,
-    ))
+    rt.spawn(async move {
+        let listeners = bind_localhost(client.runtime(), port).await?;
+        run_proxy_with_listeners(client, listeners, ListenProtocols::SocksOnly, None).await
+    })
+}
+
+/// Bind `port` on every localhost address family that is available.
+async fn bind_localhost(
+    runtime: &TokioNativeTlsRuntime,
+    port: u16,
+) -> anyhow::Result<Vec<<TokioNativeTlsRuntime as NetStreamProvider>::Listener>> {
+    let listen = Listen::new_localhost(port);
+    let mut listeners = Vec::new();
+    for addr in listen.ip_addrs()?.flatten() {
+        match runtime.listen(&addr, &TcpListenOptions::default()).await {
+            Ok(listener) => listeners.push(listener),
+            #[cfg(unix)]
+            Err(ref e) if e.raw_os_error() == Some(libc::EAFNOSUPPORT) => {}
+            Err(e) => anyhow::bail!("Can't listen on {addr}: {e}"),
+        }
+    }
+    if listeners.is_empty() {
+        anyhow::bail!("Couldn't open SOCKS listeners");
+    }
+    Ok(listeners)
 }
 
 // Due to its simple signature this dummy function is the one added (unused) to iOS swift codebase to force Xcode to link the lib
