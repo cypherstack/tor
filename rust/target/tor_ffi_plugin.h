@@ -14,6 +14,15 @@ bool tor_client_bootstrap(void *client);
 
 void tor_client_set_dormant(void *client, bool soft_mode);
 
+/**
+ * Release the client handle returned by [`tor_start`].
+ *
+ * The handle must not be used after this call. The proxy task keeps its own
+ * clone of the underlying client, so stopping the proxy and freeing the
+ * handle can happen in either order.
+ */
+void tor_client_free(void *client);
+
 void tor_proxy_stop(void *proxy);
 
 void tor_hello(void);

@@ -79,12 +79,18 @@ pub unsafe extern "C" fn tor_start(
     }
 }
 
+/// Borrow the client handle produced by [`tor_start`] without taking ownership.
+///
+/// Ownership stays with the caller until [`tor_client_free`] is called, so the
+/// handle can be passed to any number of FFI calls in between.
+unsafe fn client_ref<'a>(client: *mut c_void) -> &'a TorClient<TokioNativeTlsRuntime> {
+    assert!(!client.is_null());
+    &*(client as *const TorClient<TokioNativeTlsRuntime>)
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn tor_client_bootstrap(client: *mut c_void) -> bool {
-    let client = {
-        assert!(!client.is_null());
-        Box::from_raw(client as *mut TorClient<TokioNativeTlsRuntime>)
-    };
+    let client = client_ref(client);
 
     unwrap_or_return!(client.runtime().block_on(client.bootstrap()), false);
     true
@@ -92,10 +98,7 @@ pub unsafe extern "C" fn tor_client_bootstrap(client: *mut c_void) -> bool {
 
 #[no_mangle]
 pub unsafe extern "C" fn tor_client_set_dormant(client: *mut c_void, soft_mode: bool) {
-    let client = {
-        assert!(!client.is_null());
-        Box::from_raw(client as *mut TorClient<TokioNativeTlsRuntime>)
-    };
+    let client = client_ref(client);
 
     let dormant_mode = if soft_mode {
         DormantMode::Soft
@@ -103,7 +106,20 @@ pub unsafe extern "C" fn tor_client_set_dormant(client: *mut c_void, soft_mode: 
         DormantMode::Normal
     };
     client.set_dormant(dormant_mode);
-    Box::leak(client);
+}
+
+/// Release the client handle returned by [`tor_start`].
+///
+/// The handle must not be used after this call. The proxy task keeps its own
+/// clone of the underlying client, so stopping the proxy and freeing the
+/// handle can happen in either order.
+#[no_mangle]
+pub unsafe extern "C" fn tor_client_free(client: *mut c_void) {
+    if client.is_null() {
+        return;
+    }
+
+    drop(Box::from_raw(client as *mut TorClient<TokioNativeTlsRuntime>));
 }
 
 #[no_mangle]
@@ -135,4 +151,57 @@ fn start_proxy(
 #[no_mangle]
 pub unsafe extern "C" fn tor_hello() {
     println!("HELLO THERE");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use arti_client::config::TorClientConfigBuilder;
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    fn scratch_dir(label: &str) -> PathBuf {
+        static COUNTER: AtomicUsize = AtomicUsize::new(0);
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!(
+            "tor_ffi_plugin-test-{}-{n}-{label}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// Build a client the same way `tor_start` does, minus bootstrapping,
+    /// and hand it out as the opaque pointer Dart would receive.
+    fn unbootstrapped_client_handle() -> *mut c_void {
+        let runtime = TokioNativeTlsRuntime::create().unwrap();
+        let cfg =
+            TorClientConfigBuilder::from_directories(scratch_dir("state"), scratch_dir("cache"))
+                .build()
+                .unwrap();
+        let client = TorClient::with_runtime(runtime)
+            .config(cfg)
+            .create_unbootstrapped()
+            .unwrap();
+        Box::into_raw(Box::new(client)) as *mut c_void
+    }
+
+    #[test]
+    fn client_handle_survives_repeated_calls_until_freed() {
+        let handle = unbootstrapped_client_handle();
+
+        // Before the fix every call through the handle reconstructed and
+        // dropped the owning Box, so the second call here was a use after
+        // free and the explicit free a double free.
+        unsafe {
+            tor_client_set_dormant(handle, true);
+            tor_client_set_dormant(handle, false);
+            tor_client_free(handle);
+        }
+    }
+
+    #[test]
+    fn client_free_ignores_null() {
+        unsafe { tor_client_free(ptr::null_mut()) };
+    }
 }

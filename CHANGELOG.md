@@ -1,3 +1,9 @@
+## Unreleased
+
+* Fix `tor_client_bootstrap` and `tor_client_set_dormant` freeing the client
+  handle Dart still holds. Add `tor_client_free`; `Tor.stop` now releases the
+  client handle.
+
 ## 0.1.0
 
 * Build the Rust core with Flutter native assets instead of cargokit.
