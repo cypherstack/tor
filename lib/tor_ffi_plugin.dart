@@ -141,10 +141,13 @@ class Tor {
     _status = TorStatus.off;
   }
 
-  /// Stop the proxy.
+  /// Stop the proxy and release the native client handle.
   stop() async {
     bindings.tor_proxy_stop(_proxyPtr);
     _proxyPtr = nullptr;
+
+    bindings.tor_client_free(_clientPtr);
+    _clientPtr = nullptr;
   }
 
   setClientDormant(bool dormant) async {
