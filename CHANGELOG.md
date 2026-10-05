@@ -3,6 +3,8 @@
 * Fix `tor_client_bootstrap` and `tor_client_set_dormant` freeing the client
   handle Dart still holds. Add `tor_client_free`; `Tor.stop` now releases the
   client handle.
+* Bind the SOCKS listeners before `tor_start` returns, so a port collision
+  fails `Tor.start` instead of leaving a dead proxy behind a published port.
 
 ## 0.1.0
 
