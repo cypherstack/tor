@@ -16,6 +16,9 @@ import 'dart:ffi' as ffi;
 @ffi.Native<ffi.Bool Function(ffi.Pointer<ffi.Void>)>()
 external bool tor_client_bootstrap(ffi.Pointer<ffi.Void> client);
 
+@ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Void>)>()
+external void tor_client_free(ffi.Pointer<ffi.Void> client);
+
 @ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Bool)>()
 external void tor_client_set_dormant(
   ffi.Pointer<ffi.Void> client,
