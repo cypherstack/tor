@@ -13,7 +13,7 @@ use tokio::runtime::{Builder, Runtime};
 use tokio::task::JoinHandle;
 use tor_config::Listen;
 use tor_rtcompat::tokio::TokioNativeTlsRuntime;
-use tor_rtcompat::ToplevelBlockOn;
+use tor_rtcompat::{NetStreamProvider, ToplevelBlockOn};
 
 pub use crate::error::tor_last_error_message;
 #[cfg(not(target_os = "windows"))]
@@ -70,8 +70,14 @@ pub unsafe extern "C" fn tor_start(
         err_ret
     );
 
-    let proxy_handle_box = Box::new(start_proxy(socks_port, client.clone()));
-    let client_box = Box::new(client.clone());
+    // Bind the SOCKS listeners before handing anything back to Dart. A port
+    // collision then fails tor_start() with LAST_ERROR set instead of dying
+    // silently inside the proxy task while Dart reports the port as ready.
+    let rt = unwrap_or_return!(proxy_runtime(), err_ret);
+    let listeners = unwrap_or_return!(bind_localhost(rt, client.runtime(), socks_port), err_ret);
+
+    let proxy_handle_box = Box::new(start_proxy(rt, client.clone(), listeners));
+    let client_box = Box::new(client);
 
     Tor {
         client: Box::into_raw(client_box) as *mut c_void,
@@ -119,7 +125,9 @@ pub unsafe extern "C" fn tor_client_free(client: *mut c_void) {
         return;
     }
 
-    drop(Box::from_raw(client as *mut TorClient<TokioNativeTlsRuntime>));
+    drop(Box::from_raw(
+        client as *mut TorClient<TokioNativeTlsRuntime>,
+    ));
 }
 
 #[no_mangle]
@@ -133,18 +141,62 @@ pub unsafe extern "C" fn tor_proxy_stop(proxy: *mut c_void) {
     proxy.abort();
 }
 
+type Listener = <TokioNativeTlsRuntime as NetStreamProvider>::Listener;
+
+/// The runtime that drives the SOCKS accept loop.
+fn proxy_runtime() -> io::Result<&'static Runtime> {
+    RUNTIME
+        .as_ref()
+        .map_err(|e| io::Error::new(e.kind(), e.to_string()))
+}
+
 fn start_proxy(
-    port: u16,
+    rt: &Runtime,
     client: TorClient<TokioNativeTlsRuntime>,
+    listeners: Vec<Listener>,
 ) -> JoinHandle<anyhow::Result<()>> {
     println!("Starting proxy!");
-    let rt = RUNTIME.as_ref().unwrap();
-    rt.spawn(socks::run_socks_proxy(
-        client.runtime().clone(),
-        client.clone(),
-        Listen::new_localhost(port),
-        None,
+    rt.spawn(socks::run_socks_proxy_with_listeners(
+        client, listeners, None,
     ))
+}
+
+/// Bind `port` on every localhost address family that is available.
+///
+/// This blocks on `rt` so the listeners are registered with the reactor that
+/// later runs the accept loop, and so the caller sees a bind failure before
+/// the port is published. Mirrors what `socks::run_socks_proxy` does
+/// internally, minus the part where the error disappears into the task.
+fn bind_localhost(
+    rt: &Runtime,
+    runtime: &TokioNativeTlsRuntime,
+    port: u16,
+) -> io::Result<Vec<Listener>> {
+    rt.block_on(async {
+        let listen = Listen::new_localhost(port);
+        let mut listeners = Vec::new();
+        for addr in listen
+            .ip_addrs()
+            .map_err(|e| io::Error::other(e.to_string()))?
+            .flatten()
+        {
+            match runtime.listen(&addr).await {
+                Ok(listener) => listeners.push(listener),
+                #[cfg(unix)]
+                Err(ref e) if e.raw_os_error() == Some(libc::EAFNOSUPPORT) => {}
+                Err(e) => {
+                    return Err(io::Error::new(
+                        e.kind(),
+                        format!("Can't listen on {addr}: {e}"),
+                    ))
+                }
+            }
+        }
+        if listeners.is_empty() {
+            return Err(io::Error::other("Couldn't open SOCKS listeners"));
+        }
+        Ok(listeners)
+    })
 }
 
 // Due to its simple signature this dummy function is the one added (unused) to iOS swift codebase to force Xcode to link the lib
@@ -157,6 +209,7 @@ pub unsafe extern "C" fn tor_hello() {
 mod tests {
     use super::*;
     use arti_client::config::TorClientConfigBuilder;
+    use std::net::{Ipv4Addr, TcpListener};
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -203,5 +256,38 @@ mod tests {
     #[test]
     fn client_free_ignores_null() {
         unsafe { tor_client_free(ptr::null_mut()) };
+    }
+
+    #[test]
+    fn bind_localhost_reports_an_occupied_port() {
+        let occupied = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let port = occupied.local_addr().unwrap().port();
+        let arti_rt = TokioNativeTlsRuntime::create().unwrap();
+
+        let err = match bind_localhost(proxy_runtime().unwrap(), &arti_rt, port) {
+            Ok(_) => panic!("bound port {port} while it was occupied"),
+            Err(err) => err,
+        };
+
+        assert!(err.to_string().contains("Can't listen on"), "{err}");
+    }
+
+    #[test]
+    fn bind_localhost_holds_the_port_until_dropped() {
+        let port = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let arti_rt = TokioNativeTlsRuntime::create().unwrap();
+
+        let listeners = bind_localhost(proxy_runtime().unwrap(), &arti_rt, port).unwrap();
+
+        assert!(
+            TcpListener::bind((Ipv4Addr::LOCALHOST, port)).is_err(),
+            "port {port} was published without being held"
+        );
+        drop(listeners);
+        TcpListener::bind((Ipv4Addr::LOCALHOST, port)).unwrap();
     }
 }
