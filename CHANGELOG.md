@@ -28,6 +28,8 @@
   directory could not be deleted on Windows.
 * Include the vendored crates in `rust/patches/` in the prebuilt source
   fingerprint, so editing them invalidates prebuilts and the hook cache.
+* Skip hidden files such as `.DS_Store` in the native source fingerprint and
+  hash sources as bytes, so stray files no longer fail or invalidate builds.
 
 ## 0.1.0
 
