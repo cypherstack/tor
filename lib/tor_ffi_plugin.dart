@@ -194,10 +194,11 @@ class Tor {
   /// Returns void.
   void _bootstrap() => _native.bootstrap(_clientPtr);
 
-  /// Prevent traffic flowing through the proxy
-  void disable() {
-    _status = TorStatus.off;
-  }
+  /// Prevent traffic flowing through the proxy.
+  ///
+  /// This is the same as [stop]: the SOCKS proxy is shut down and the native
+  /// client released.
+  Future<void> disable() => stop();
 
   /// Stop the proxy and release the native client handle.
   ///

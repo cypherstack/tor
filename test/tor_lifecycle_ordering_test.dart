@@ -128,6 +128,21 @@ void main() {
     expect(native.liveProxies, isEmpty);
   });
 
+  test('disable stops the proxy', () async {
+    final started = tor.start(torDataDirPath: dataDir.path);
+    await native.waitForStarts(1);
+    native.pendingStarts[0].complete();
+    await started;
+
+    await tor.disable();
+    expect(tor.status, TorStatus.off);
+    expect(native.liveClients, isEmpty);
+    expect(native.liveProxies, isEmpty);
+
+    // Callers that follow disable() with stop() keep working.
+    await tor.stop();
+  });
+
   test('restart during a pending start never overlaps instances', () async {
     final first = tor.start(torDataDirPath: dataDir.path);
     await native.waitForStarts(1);

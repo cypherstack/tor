@@ -13,6 +13,8 @@
   ready, or fail together with the same error.
 * Release the native client and proxy when bootstrap fails during
   `Tor.start`, instead of leaving the proxy running.
+* `Tor.disable` now stops the proxy like `Tor.stop`; before, it only changed
+  the reported status while traffic kept flowing. It returns a `Future`.
 
 ## 0.1.0
 
