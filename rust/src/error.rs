@@ -24,7 +24,9 @@ pub unsafe extern "C" fn tor_last_error_message() -> *const c_char {
         None => return CString::new("").unwrap().into_raw(),
     };
 
-    let error_message = last_error.to_string();
+    // CString::new rejects interior NULs, and a panic here would abort the
+    // process at the FFI boundary.
+    let error_message = last_error.to_string().replace('\0', "");
     CString::new(error_message).unwrap().into_raw()
 }
 

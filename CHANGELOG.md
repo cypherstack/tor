@@ -21,6 +21,7 @@
 * Free the state and cache directory strings passed to `tor_start`.
 * Add `tor_string_free` and use it to release Rust error messages after
   Dart copies them.
+* Strip NUL bytes from Rust error messages instead of panicking across FFI.
 * When the OS assigns the SOCKS port and its IPv6 loopback twin is held by
   another process, try up to three more ports, then fail to start with an
   error saying the twin stayed occupied. Serving IPv4 alone there would let
