@@ -18,6 +18,7 @@
 * Fix SOCKS port selection giving up after one failed bind and sometimes
   picking port 0 or a privileged port. It now retries up to 32 ports in
   1024–65535.
+* Free the state and cache directory strings passed to `tor_start`.
 
 ## 0.1.0
 

@@ -48,18 +48,26 @@ class TorNative {
     String stateDir,
     String cacheDir,
   ) {
-    final tor = bindings.tor_start(
-      port,
-      stateDir.toNativeUtf8() as Pointer<Char>,
-      cacheDir.toNativeUtf8() as Pointer<Char>,
-    );
+    // tor_start() copies both paths, so they are freed once it returns.
+    final stateDirPtr = stateDir.toNativeUtf8();
+    final cacheDirPtr = cacheDir.toNativeUtf8();
+    try {
+      final tor = bindings.tor_start(
+        port,
+        stateDirPtr.cast<Char>(),
+        cacheDirPtr.cast<Char>(),
+      );
 
-    // Throw an exception if the Tor service fails to start.
-    if (tor.client == nullptr) {
-      Tor.throwRustException();
+      // Throw an exception if the Tor service fails to start.
+      if (tor.client == nullptr) {
+        Tor.throwRustException();
+      }
+
+      return (tor.client.address, tor.proxy.address);
+    } finally {
+      malloc.free(stateDirPtr);
+      malloc.free(cacheDirPtr);
     }
-
-    return (tor.client.address, tor.proxy.address);
   }
 
   /// Bootstrap [client]. Throws the Rust error on failure.
