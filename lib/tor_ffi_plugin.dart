@@ -82,7 +82,19 @@ class TorNative {
 
   void stopProxy(Pointer<Void> proxy) => bindings.tor_proxy_stop(proxy);
 
-  void freeClient(Pointer<Void> client) => bindings.tor_client_free(client);
+  /// Release [client] in a worker isolate, since tearing down Tor can block
+  /// for a few seconds.
+  Future<void> freeClient(Pointer<Void> client) async {
+    if (client == nullptr) {
+      return;
+    }
+
+    final address = client.address;
+    await Isolate.run(() => _freeInIsolate(address));
+  }
+
+  static void _freeInIsolate(int client) =>
+      bindings.tor_client_free(Pointer<Void>.fromAddress(client));
 
   /// Print the native greeting to verify that the library is linked.
   void hello() => bindings.tor_hello();
@@ -182,7 +194,7 @@ class Tor {
     } catch (_) {
       // Release anything the native start produced before bootstrap failed;
       // the next start would otherwise overwrite these handles.
-      _stop();
+      await _stop();
       rethrow;
     }
   }
@@ -212,18 +224,20 @@ class Tor {
   Future<void> stop() {
     // A start requested after this stop must not join the earlier attempt.
     _pendingStart = null;
-    return _enqueue(() async => _stop());
+    return _enqueue(_stop);
   }
 
-  void _stop() {
+  Future<void> _stop() async {
     _native.stopProxy(_proxyPtr);
     _proxyPtr = nullptr;
 
-    _native.freeClient(_clientPtr);
+    final client = _clientPtr;
     _clientPtr = nullptr;
 
     _proxyPort = null;
     _status = TorStatus.off;
+
+    await _native.freeClient(client);
   }
 
   /// Tail of the queue that runs [start] and [stop] one at a time.
