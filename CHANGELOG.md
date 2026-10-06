@@ -18,6 +18,7 @@
   the reported status while traffic kept flowing. **API change:** it returns
   a `Future<void>` that can throw on release failure. Await it or attach an
   error handler when calling from a synchronous dispose method.
+* Free the state and cache directory strings passed to `tor_start`.
 * When the OS assigns the SOCKS port and its IPv6 loopback twin is held by
   another process, try up to three more ports, then fail to start with an
   error saying the twin stayed occupied. Serving IPv4 alone there would let
