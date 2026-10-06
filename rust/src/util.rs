@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Foundation Devices Inc.
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
+#[cfg(not(target_os = "windows"))]
 use crate::error::update_last_error;
 
 /// Read the current open-file limit.
