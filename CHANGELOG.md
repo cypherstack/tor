@@ -1,3 +1,38 @@
+## 0.2.0
+
+* Bump arti to 2.6.0; needs Rust 1.91.
+* Fix `tor_client_bootstrap` and `tor_client_set_dormant` freeing the client
+  handle Dart still holds. Add `tor_client_free`; `Tor.stop` now releases the
+  client handle.
+* Bind the SOCKS listeners before `tor_start` returns, so a port collision
+  fails `Tor.start` instead of leaving a dead proxy behind a published port.
+* `Tor.stop` resets the wrapper's state, so Tor can be started again.
+* `Tor.start` and `Tor.stop` run one at a time. A `stop` issued while a
+  `start` is in progress waits for it and then tears it down.
+* Concurrent `Tor.start` calls share one attempt and complete only when Tor is
+  ready, or fail together with the same error.
+* Release the native client and proxy when bootstrap fails during
+  `Tor.start`, instead of leaving the proxy running.
+* `Tor.disable` now stops the proxy like `Tor.stop`; before, it only changed
+  the reported status while traffic kept flowing. It returns a `Future`.
+* Fix SOCKS port selection giving up after one failed bind and sometimes
+  picking port 0 or a privileged port. It now retries up to 32 ports in
+  1024–65535.
+* Free the state and cache directory strings passed to `tor_start`.
+* Add `tor_string_free` and use it to release Rust error messages after
+  Dart copies them.
+* Strip NUL bytes from Rust error messages instead of panicking across FFI.
+* `Tor.stop` now shuts down the client's runtime, releasing its threads and
+  its state and cache files, and completes once they are released. Before,
+  every start leaked a client that kept the cache open, so the data
+  directory could not be deleted on Windows.
+* Include the vendored crates in `rust/patches/` in the prebuilt source
+  fingerprint, so editing them invalidates prebuilts and the hook cache.
+* Skip hidden files such as `.DS_Store` in the native source fingerprint and
+  hash sources as bytes, so stray files no longer fail or invalidate builds.
+* Leave Cargo output from building a vendored crate on its own (`target/` and
+  `Cargo.lock`) out of the native source fingerprint.
+
 ## 0.1.0
 
 * Build the Rust core with Flutter native assets instead of cargokit.

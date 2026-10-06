@@ -31,6 +31,7 @@ Future<String> fileHash(File file) async =>
 
 // Hash paths and contents so additions, deletions and ABI changes invalidate
 // prebuilts. Track directories as well as files for Flutter's hook cache.
+// Hidden entries and Cargo output are not native inputs and are skipped.
 Future<({String hash, List<Uri> dependencies})> sourceFingerprint(
   Uri root,
 ) async {
@@ -43,12 +44,11 @@ Future<({String hash, List<Uri> dependencies})> sourceFingerprint(
       'hook/build.dart',
       'lib/tor_ffi_plugin_bindings_generated.dart',
       'rust/src/',
+      'rust/patches/',
     ])
       root.resolve(path),
-    await for (final entry in Directory.fromUri(
-      root.resolve('rust/src/'),
-    ).list(recursive: true, followLinks: false))
-      entry.uri,
+    for (final dir in ['rust/src/', 'rust/patches/'])
+      ...await _sourceEntries(Directory.fromUri(root.resolve(dir))),
   ]..sort((a, b) => a.path.compareTo(b.path));
   final hashes = StringBuffer();
   for (final uri in dependencies) {
@@ -60,12 +60,11 @@ Future<({String hash, List<Uri> dependencies})> sourceFingerprint(
       throw StateError('Native source symlinks are unsupported: $uri');
     }
     if (type == FileSystemEntityType.directory) continue;
-    // Git checkouts may use CRLF on Windows; native inputs are text files.
-    final text = (await File.fromUri(
-      uri,
-    ).readAsString()).replaceAll('\r\n', '\n');
+    // Git checkouts may use CRLF on Windows. Hash bytes rather than decoded
+    // text so a file that is not UTF-8 cannot fail the build.
+    final bytes = _lfLineEndings(await File.fromUri(uri).readAsBytes());
     hashes.writeln(
-      '${uri.path.substring(root.path.length)}:${sha256.convert(utf8.encode(text))}',
+      '${uri.path.substring(root.path.length)}:${sha256.convert(bytes)}',
     );
   }
   return (
@@ -73,6 +72,33 @@ Future<({String hash, List<Uri> dependencies})> sourceFingerprint(
     dependencies: dependencies,
   );
 }
+
+/// Entries under [directory], without descending into skipped directories.
+Future<List<Uri>> _sourceEntries(Directory directory) async => [
+  await for (final entry in directory.list(followLinks: false))
+    if (!_isSkipped(entry)) ...[
+      entry.uri,
+      if (entry is Directory) ...await _sourceEntries(entry),
+    ],
+];
+
+/// Whether [entry] is hidden, such as .DS_Store, or Cargo output left by
+/// building a vendored crate on its own: its `target` directory, or its
+/// lockfile, which Cargo ignores for dependencies.
+bool _isSkipped(FileSystemEntity entry) {
+  final name = entry.uri.pathSegments.lastWhere((s) => s.isNotEmpty);
+  if (name.startsWith('.') || name == 'Cargo.lock') return true;
+  return entry is Directory &&
+      name == 'target' &&
+      File.fromUri(entry.parent.uri.resolve('Cargo.toml')).existsSync();
+}
+
+/// [bytes] with each CRLF replaced by LF.
+List<int> _lfLineEndings(List<int> bytes) => [
+  for (var i = 0; i < bytes.length; i++)
+    if (bytes[i] != 0x0d || i + 1 == bytes.length || bytes[i + 1] != 0x0a)
+      bytes[i],
+];
 
 String rustTarget(CodeConfig code) => switch ((
   code.targetOS,
