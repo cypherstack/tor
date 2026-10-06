@@ -13,6 +13,10 @@
   ready, or fail together with the same error.
 * Release the native client and proxy when bootstrap fails during
   `Tor.start`, instead of leaving the proxy running.
+* `Tor.disable` now stops the proxy like `Tor.stop`; before, it only changed
+  the reported status while traffic kept flowing. **API change:** it returns
+  a `Future<void>` that can throw on release failure. Await it or attach an
+  error handler when calling from a synchronous dispose method.
 * Route `Tor.hello` through the injectable native layer so test instances
   can substitute the greeting without calling the real library.
 
