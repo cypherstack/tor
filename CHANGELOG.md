@@ -97,6 +97,8 @@
   status to `off` if no native handles remain.
 * Route `Tor.hello` through the injectable native layer so test instances
   can substitute the greeting without calling the real library.
+* Skip hidden files such as `.DS_Store` in the native source fingerprint and
+  hash sources as bytes, so stray files no longer fail or invalidate builds.
 
 ## 0.1.0
 
