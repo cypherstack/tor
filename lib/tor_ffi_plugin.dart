@@ -122,8 +122,25 @@ class Tor {
   /// Returns a Future that completes when the Tor service has started.
   ///
   /// [start] and [stop] run one at a time, in the order they were called.
-  Future<void> start({required String torDataDirPath}) =>
-      _enqueue(() => _start(torDataDirPath));
+  /// Calling [start] while an earlier start is still pending returns that
+  /// start's future, so every caller sees the same success or failure.
+  Future<void> start({required String torDataDirPath}) {
+    final pending = _pendingStart;
+    if (pending != null) {
+      return pending;
+    }
+
+    late final Future<void> attempt;
+    attempt = _enqueue(() => _start(torDataDirPath)).whenComplete(() {
+      if (identical(_pendingStart, attempt)) {
+        _pendingStart = null;
+      }
+    });
+    return _pendingStart = attempt;
+  }
+
+  /// The start that later [start] calls join, until a [stop] is requested.
+  Future<void>? _pendingStart;
 
   Future<void> _start(String torDataDirPath) async {
     if (_status == TorStatus.on) {
@@ -184,7 +201,11 @@ class Tor {
   ///
   /// If a [start] is still in progress, this waits for it to finish and then
   /// tears down what it started, so no Tor instance outlives the call.
-  Future<void> stop() => _enqueue(() async => _stop());
+  Future<void> stop() {
+    // A start requested after this stop must not join the earlier attempt.
+    _pendingStart = null;
+    return _enqueue(() async => _stop());
+  }
 
   void _stop() {
     _native.stopProxy(_proxyPtr);

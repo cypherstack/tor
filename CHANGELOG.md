@@ -9,6 +9,8 @@
 * `Tor.stop` resets the wrapper's state, so Tor can be started again.
 * `Tor.start` and `Tor.stop` run one at a time. A `stop` issued while a
   `start` is in progress waits for it and then tears it down.
+* Concurrent `Tor.start` calls share one attempt and complete only when Tor is
+  ready, or fail together with the same error.
 
 ## 0.1.0
 

@@ -80,6 +80,37 @@ void main() {
     expect(native.liveProxies, isEmpty);
   });
 
+  test('concurrent starts wait for the same attempt', () async {
+    final first = tor.start(torDataDirPath: dataDir.path);
+    final second = tor.start(torDataDirPath: dataDir.path);
+    await native.waitForStarts(1);
+
+    var secondDone = false;
+    unawaited(second.then((_) => secondDone = true));
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    expect(secondDone, isFalse);
+
+    native.pendingStarts[0].complete();
+    await Future.wait([first, second]);
+
+    expect(tor.status, TorStatus.on);
+    expect(native.pendingStarts, hasLength(1));
+    await tor.stop();
+  });
+
+  test('concurrent starts both see a failed attempt', () async {
+    final first = tor.start(torDataDirPath: dataDir.path);
+    final second = tor.start(torDataDirPath: dataDir.path);
+    await native.waitForStarts(1);
+
+    native.pendingStarts[0].completeError(Exception('bootstrap failed'));
+
+    await expectLater(first, throwsException);
+    await expectLater(second, throwsException);
+    expect(tor.status, TorStatus.off);
+    expect(native.pendingStarts, hasLength(1));
+  }, timeout: const Timeout(Duration(seconds: 10)));
+
   test('restart during a pending start never overlaps instances', () async {
     final first = tor.start(torDataDirPath: dataDir.path);
     await native.waitForStarts(1);
