@@ -36,6 +36,12 @@ pub struct Tor {
     proxy: *mut c_void,
 }
 
+/// Start a bootstrapped Tor client and a localhost SOCKS proxy.
+///
+/// # Safety
+/// `state_dir` and `cache_dir` must point to valid, NUL-terminated strings
+/// for the duration of the call. Each returned non-null handle must be
+/// released exactly once with its corresponding cleanup function.
 #[no_mangle]
 pub unsafe extern "C" fn tor_start(
     socks_port: u16,
@@ -94,6 +100,11 @@ unsafe fn client_ref<'a>(client: *mut c_void) -> &'a Arc<TorClient<TokioNativeTl
     &*(client as *const Arc<TorClient<TokioNativeTlsRuntime>>)
 }
 
+/// Ensure the client has bootstrapped.
+///
+/// # Safety
+/// `client` must be a live, non-null handle returned by [`tor_start`].
+/// It must not be freed while this call is in progress.
 #[no_mangle]
 pub unsafe extern "C" fn tor_client_bootstrap(client: *mut c_void) -> bool {
     let client = client_ref(client);
@@ -102,6 +113,11 @@ pub unsafe extern "C" fn tor_client_bootstrap(client: *mut c_void) -> bool {
     true
 }
 
+/// Change the client's dormant mode.
+///
+/// # Safety
+/// `client` must be a live, non-null handle returned by [`tor_start`].
+/// It must not be freed while this call is in progress.
 #[no_mangle]
 pub unsafe extern "C" fn tor_client_set_dormant(client: *mut c_void, soft_mode: bool) {
     let client = client_ref(client);
@@ -119,6 +135,10 @@ pub unsafe extern "C" fn tor_client_set_dormant(client: *mut c_void, soft_mode: 
 /// The handle must not be used after this call. The proxy task keeps its own
 /// reference to the underlying client, so stopping the proxy and freeing the
 /// handle can happen in either order.
+///
+/// # Safety
+/// `client` must be null or a live handle returned by [`tor_start`].
+/// No other call may use the handle concurrently with or after this call.
 #[no_mangle]
 pub unsafe extern "C" fn tor_client_free(client: *mut c_void) {
     if client.is_null() {
@@ -130,6 +150,11 @@ pub unsafe extern "C" fn tor_client_free(client: *mut c_void) {
     ));
 }
 
+/// Stop the proxy and release its handle. Null is accepted.
+///
+/// # Safety
+/// `proxy` must be null or a live proxy handle returned by [`tor_start`].
+/// A non-null handle must be passed to this function only once.
 #[no_mangle]
 pub unsafe extern "C" fn tor_proxy_stop(proxy: *mut c_void) {
     if proxy.is_null() {
@@ -202,6 +227,10 @@ fn bind_localhost(
 }
 
 // Due to its simple signature this dummy function is the one added (unused) to iOS swift codebase to force Xcode to link the lib
+/// Print a greeting to verify that the library is linked.
+///
+/// # Safety
+/// This function has no additional safety requirements.
 #[no_mangle]
 pub unsafe extern "C" fn tor_hello() {
     println!("HELLO THERE");

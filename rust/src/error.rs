@@ -12,6 +12,11 @@ thread_local! {
     static LAST_ERROR: RefCell<Option<Box<dyn Error>>> = RefCell::new(None);
 }
 
+/// Take the current thread's last error as a newly allocated C string.
+///
+/// # Safety
+/// This function has no preconditions. The returned string is owned by the
+/// caller and must only be reclaimed with Rust's `CString::from_raw`.
 #[no_mangle]
 pub unsafe extern "C" fn tor_last_error_message() -> *const c_char {
     let last_error = match crate::error::take_last_error() {

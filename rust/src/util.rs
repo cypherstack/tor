@@ -3,6 +3,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 use crate::error::update_last_error;
 
+/// Read the current open-file limit.
+///
+/// # Safety
+/// This function has no additional safety requirements.
 #[no_mangle]
 #[cfg(not(target_os = "windows"))]
 pub unsafe extern "C" fn tor_get_nofile_limit() -> u64 {
@@ -10,6 +14,10 @@ pub unsafe extern "C" fn tor_get_nofile_limit() -> u64 {
     nofile_limit.0
 }
 
+/// Increase the open-file limit, up to the hard limit.
+///
+/// # Safety
+/// This function has no additional safety requirements.
 #[no_mangle]
 #[cfg(not(target_os = "windows"))]
 pub unsafe extern "C" fn tor_set_nofile_limit(limit: u64) -> u64 {
