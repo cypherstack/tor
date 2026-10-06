@@ -67,6 +67,23 @@ dart --packages=.dart_tool/package_config.json tool/prebuilt_manifest.dart artif
 To generate `tor_ffi_plugin.h` C bindings for Rust, `cargo build` in `rust` to produce headers according to `build.rs`.
 To generate `tor_ffi_plugin_bindings_generated.dart` Dart bindings for C, `dart run ffigen --config ffigen.yaml`.
 
+### Tests
+
+Run the Rust tests with the pinned toolchain, then the offline Dart tests:
+
+```sh
+(cd rust && cargo test --locked)
+flutter test
+```
+
+The lifecycle regression also verifies stop/restart against the real Tor
+network. Enable it explicitly (it requires network access and can take several
+minutes):
+
+```sh
+flutter test --dart-define=TOR_NETWORK_TESTS=true
+```
+
 ## Example app
 
 `flutter run` in `example` to run the example app

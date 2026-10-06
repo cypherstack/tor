@@ -6,6 +6,11 @@
   client handle.
 * Bind the SOCKS listeners before `tor_start` returns, so a port collision
   fails `Tor.start` instead of leaving a dead proxy behind a published port.
+* `Tor.stop` resets the wrapper's state, so Tor can be started again.
+* `Tor.start` and `Tor.stop` run one at a time. A `stop` issued while a
+  `start` is in progress waits for it and then tears it down.
+* Route `Tor.hello` through the injectable native layer so test instances
+  can substitute the greeting without calling the real library.
 
 ## 0.1.0
 
