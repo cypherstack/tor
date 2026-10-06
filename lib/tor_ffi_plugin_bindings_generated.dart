@@ -23,13 +23,15 @@ external bool tor_client_bootstrap(ffi.Pointer<ffi.Void> client);
 
 /// Release the client handle returned by [`tor_start`].
 ///
-/// The handle must not be used after this call. The proxy task keeps its own
-/// reference to the underlying client, so stopping the proxy and freeing the
-/// handle can happen in either order.
+/// This shuts down the client's background tasks and closes its state and
+/// cache files, which can block for a few seconds. Stop the proxy first: it
+/// keeps its own reference to the client, but cannot serve connections once
+/// the client is freed.
 ///
 /// # Safety
 /// `client` must be null or a live handle returned by [`tor_start`].
 /// No other call may use the handle concurrently with or after this call.
+/// It must not be called from within an async runtime.
 @ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Void>)>()
 external void tor_client_free(ffi.Pointer<ffi.Void> client);
 

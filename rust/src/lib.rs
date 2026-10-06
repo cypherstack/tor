@@ -9,6 +9,7 @@ use arti_client::{DormantMode, TorClient, TorClientConfig};
 use lazy_static::lazy_static;
 use std::ffi::{c_char, c_void, CStr};
 use std::sync::Arc;
+use std::time::Duration;
 use std::{io, ptr};
 use tokio::runtime::{Builder, Runtime};
 use tokio::task::JoinHandle;
@@ -30,10 +31,61 @@ lazy_static! {
     static ref RUNTIME: io::Result<Runtime> = Builder::new_multi_thread().enable_all().build();
 }
 
+/// How long freeing a client waits for its background tasks to finish.
+const CLIENT_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
+
 #[repr(C)]
 pub struct Tor {
     client: *mut c_void,
     proxy: *mut c_void,
+}
+
+/// The tokio runtime a single client and its background tasks run on.
+///
+/// Arti's background tasks hold the client's runtime, so a runtime the client
+/// owns is never dropped and the tasks keep the directory cache and state
+/// files open after the client is freed. Each client instead runs on a
+/// runtime owned here and shut down when this is dropped.
+struct ClientRuntime(Option<Runtime>);
+
+impl ClientRuntime {
+    fn new() -> io::Result<Self> {
+        Ok(Self(Some(
+            Builder::new_multi_thread().enable_all().build()?,
+        )))
+    }
+
+    /// An arti runtime that spawns onto this runtime without owning it.
+    fn arti(&self) -> io::Result<TokioNativeTlsRuntime> {
+        let _guard = self.0.as_ref().expect("runtime is live").enter();
+        TokioNativeTlsRuntime::current()
+    }
+}
+
+impl Drop for ClientRuntime {
+    fn drop(&mut self) {
+        if let Some(runtime) = self.0.take() {
+            runtime.shutdown_timeout(CLIENT_SHUTDOWN_TIMEOUT);
+        }
+    }
+}
+
+/// What a client handle passed across FFI points to.
+struct ClientHandle {
+    // Fields drop in order, so the client is released before its runtime
+    // shuts down.
+    client: Arc<TorClient<TokioNativeTlsRuntime>>,
+    _runtime: ClientRuntime,
+}
+
+fn into_client_handle(
+    client: Arc<TorClient<TokioNativeTlsRuntime>>,
+    runtime: ClientRuntime,
+) -> *mut c_void {
+    Box::into_raw(Box::new(ClientHandle {
+        client,
+        _runtime: runtime,
+    })) as *mut c_void
 }
 
 /// Start a bootstrapped Tor client and a localhost SOCKS proxy.
@@ -56,7 +108,8 @@ pub unsafe extern "C" fn tor_start(
     let state_dir = unwrap_or_return!(CStr::from_ptr(state_dir).to_str(), err_ret);
     let cache_dir = unwrap_or_return!(CStr::from_ptr(cache_dir).to_str(), err_ret);
 
-    let runtime = unwrap_or_return!(TokioNativeTlsRuntime::create(), err_ret);
+    let client_runtime = unwrap_or_return!(ClientRuntime::new(), err_ret);
+    let runtime = unwrap_or_return!(client_runtime.arti(), err_ret);
 
     // Reserve the port before initializing storage or bootstrapping. On any
     // later failure these listeners are dropped and the port is released.
@@ -83,10 +136,9 @@ pub unsafe extern "C" fn tor_start(
     );
 
     let proxy_handle_box = Box::new(start_proxy(rt, Arc::clone(&client), listeners));
-    let client_box = Box::new(client);
 
     Tor {
-        client: Box::into_raw(client_box) as *mut c_void,
+        client: into_client_handle(client, client_runtime),
         proxy: Box::into_raw(proxy_handle_box) as *mut c_void,
     }
 }
@@ -97,7 +149,7 @@ pub unsafe extern "C" fn tor_start(
 /// handle can be passed to any number of FFI calls in between.
 unsafe fn client_ref<'a>(client: *mut c_void) -> &'a Arc<TorClient<TokioNativeTlsRuntime>> {
     assert!(!client.is_null());
-    &*(client as *const Arc<TorClient<TokioNativeTlsRuntime>>)
+    &(*(client as *const ClientHandle)).client
 }
 
 /// Ensure the client has bootstrapped.
@@ -132,22 +184,22 @@ pub unsafe extern "C" fn tor_client_set_dormant(client: *mut c_void, soft_mode: 
 
 /// Release the client handle returned by [`tor_start`].
 ///
-/// The handle must not be used after this call. The proxy task keeps its own
-/// reference to the underlying client, so stopping the proxy and freeing the
-/// handle can happen in either order.
+/// This shuts down the client's background tasks and closes its state and
+/// cache files, which can block for a few seconds. Stop the proxy first: it
+/// keeps its own reference to the client, but cannot serve connections once
+/// the client is freed.
 ///
 /// # Safety
 /// `client` must be null or a live handle returned by [`tor_start`].
 /// No other call may use the handle concurrently with or after this call.
+/// It must not be called from within an async runtime.
 #[no_mangle]
 pub unsafe extern "C" fn tor_client_free(client: *mut c_void) {
     if client.is_null() {
         return;
     }
 
-    drop(Box::from_raw(
-        client as *mut Arc<TorClient<TokioNativeTlsRuntime>>,
-    ));
+    drop(Box::from_raw(client as *mut ClientHandle));
 }
 
 /// Stop the proxy and release its handle. Null is accepted.
@@ -242,7 +294,7 @@ mod tests {
     use arti_client::config::TorClientConfigBuilder;
     use std::ffi::CString;
     use std::net::{Ipv4Addr, TcpListener};
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     fn scratch_dir(label: &str) -> PathBuf {
@@ -259,19 +311,47 @@ mod tests {
         dir
     }
 
-    /// Build a client the same way `tor_start` does, minus bootstrapping,
-    /// and hand it out as the opaque pointer Dart would receive.
-    fn unbootstrapped_client_handle() -> *mut c_void {
-        let runtime = TokioNativeTlsRuntime::create().unwrap();
-        let cfg =
-            TorClientConfigBuilder::from_directories(scratch_dir("state"), scratch_dir("cache"))
-                .build()
-                .unwrap();
-        let client = TorClient::with_runtime(runtime)
+    /// Build a client under `root` the same way `tor_start` does, minus
+    /// bootstrapping.
+    fn unbootstrapped_client(
+        root: &Path,
+    ) -> (Arc<TorClient<TokioNativeTlsRuntime>>, ClientRuntime) {
+        let runtime = ClientRuntime::new().unwrap();
+        let cfg = TorClientConfigBuilder::from_directories(root.join("state"), root.join("cache"))
+            .build()
+            .unwrap();
+        let client = TorClient::with_runtime(runtime.arti().unwrap())
             .config(cfg)
             .create_unbootstrapped()
             .unwrap();
-        Box::into_raw(Box::new(client)) as *mut c_void
+        (client, runtime)
+    }
+
+    /// An unbootstrapped client as the opaque pointer Dart would receive.
+    fn unbootstrapped_client_handle() -> *mut c_void {
+        let (client, runtime) = unbootstrapped_client(&scratch_dir("client"));
+        into_client_handle(client, runtime)
+    }
+
+    #[test]
+    fn freeing_the_client_closes_its_files() {
+        let root = scratch_dir("free");
+        let (client, runtime) = unbootstrapped_client(&root);
+        // Leave a bootstrap running, as Tor.stop() does with a live client, so
+        // background tasks are using the directory cache. The result does not
+        // matter, so this works offline too.
+        let bootstrapping = Arc::clone(&client);
+        runtime
+            .0
+            .as_ref()
+            .unwrap()
+            .spawn(async move { drop(bootstrapping.bootstrap().await) });
+        std::thread::sleep(Duration::from_secs(1));
+        unsafe { tor_client_free(into_client_handle(client, runtime)) };
+
+        // Windows refuses to delete files that are still open. Before the fix
+        // the client's background tasks kept the directory cache open forever.
+        std::fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]
@@ -293,21 +373,15 @@ mod tests {
         // Overwrite the directory cache after the client has opened it, so
         // bootstrap fails at once instead of reaching for the network. The
         // client holds a lock on dir.lock, which Windows enforces, so skip it.
-        let cache_dir = scratch_dir("cache");
-        let cfg = TorClientConfigBuilder::from_directories(scratch_dir("state"), &cache_dir)
-            .build()
-            .unwrap();
-        let client = TorClient::with_runtime(TokioNativeTlsRuntime::create().unwrap())
-            .config(cfg)
-            .create_unbootstrapped()
-            .unwrap();
-        for entry in std::fs::read_dir(&cache_dir).unwrap() {
+        let root = scratch_dir("failed-bootstrap");
+        let (client, runtime) = unbootstrapped_client(&root);
+        for entry in std::fs::read_dir(root.join("cache")).unwrap() {
             let path = entry.unwrap().path();
             if path.is_file() && path.file_name() != Some("dir.lock".as_ref()) {
                 std::fs::write(&path, [0x5a; 8192]).unwrap();
             }
         }
-        let handle = Box::into_raw(Box::new(client)) as *mut c_void;
+        let handle = into_client_handle(client, runtime);
 
         // Before the fix tor_client_bootstrap() freed the handle on every
         // return, so the calls after it were a use after free and the final

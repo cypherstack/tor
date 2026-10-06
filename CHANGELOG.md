@@ -22,6 +22,10 @@
 * Add `tor_string_free` and use it to release Rust error messages after
   Dart copies them.
 * Strip NUL bytes from Rust error messages instead of panicking across FFI.
+* `Tor.stop` now shuts down the client's runtime, releasing its threads and
+  its state and cache files, and completes once they are released. Before,
+  every start leaked a client that kept the cache open, so the data
+  directory could not be deleted on Windows.
 
 ## 0.1.0
 
