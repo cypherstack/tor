@@ -71,9 +71,18 @@ void tor_hello(void);
  *
  * # Safety
  * This function has no preconditions. The returned string is owned by the
- * caller and must only be reclaimed with Rust's `CString::from_raw`.
+ * caller and must be released exactly once with [`tor_string_free`].
  */
 const char *tor_last_error_message(void);
+
+/**
+ * Release a string returned by [`tor_last_error_message`].
+ *
+ * # Safety
+ * `message` must be null or a pointer returned by `tor_last_error_message`
+ * that has not been released yet. It must not be used after this call.
+ */
+void tor_string_free(char *message);
 
 /**
  * Read the current open-file limit.

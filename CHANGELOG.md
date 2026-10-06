@@ -19,6 +19,8 @@
   picking port 0 or a privileged port. It now retries up to 32 ports in
   1024–65535.
 * Free the state and cache directory strings passed to `tor_start`.
+* Add `tor_string_free` and use it to release Rust error messages after
+  Dart copies them.
 
 ## 0.1.0
 

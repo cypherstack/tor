@@ -16,7 +16,7 @@ thread_local! {
 ///
 /// # Safety
 /// This function has no preconditions. The returned string is owned by the
-/// caller and must only be reclaimed with Rust's `CString::from_raw`.
+/// caller and must be released exactly once with [`tor_string_free`].
 #[no_mangle]
 pub unsafe extern "C" fn tor_last_error_message() -> *const c_char {
     let last_error = match crate::error::take_last_error() {
@@ -26,6 +26,20 @@ pub unsafe extern "C" fn tor_last_error_message() -> *const c_char {
 
     let error_message = last_error.to_string();
     CString::new(error_message).unwrap().into_raw()
+}
+
+/// Release a string returned by [`tor_last_error_message`].
+///
+/// # Safety
+/// `message` must be null or a pointer returned by `tor_last_error_message`
+/// that has not been released yet. It must not be used after this call.
+#[no_mangle]
+pub unsafe extern "C" fn tor_string_free(message: *mut c_char) {
+    if message.is_null() {
+        return;
+    }
+
+    drop(CString::from_raw(message));
 }
 
 macro_rules! unwrap_or_return {

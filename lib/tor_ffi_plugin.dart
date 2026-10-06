@@ -281,10 +281,13 @@ class Tor {
   // }
 
   static void throwRustException() {
-    String rustError = bindings
-        .tor_last_error_message()
-        .cast<Utf8>()
-        .toDartString();
+    final message = bindings.tor_last_error_message();
+    final String rustError;
+    try {
+      rustError = message.cast<Utf8>().toDartString();
+    } finally {
+      bindings.tor_string_free(message);
+    }
 
     throw _getRustException(rustError);
   }

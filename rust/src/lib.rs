@@ -16,7 +16,7 @@ use tor_config::Listen;
 use tor_rtcompat::tokio::TokioNativeTlsRuntime;
 use tor_rtcompat::{NetStreamProvider, TcpListenOptions, ToplevelBlockOn};
 
-pub use crate::error::tor_last_error_message;
+pub use crate::error::{tor_last_error_message, tor_string_free};
 #[cfg(not(target_os = "windows"))]
 pub use crate::util::tor_get_nofile_limit;
 #[cfg(not(target_os = "windows"))]
@@ -319,6 +319,18 @@ mod tests {
             tor_client_free(handle);
         }
         assert!(crate::error::take_last_error().is_some());
+    }
+
+    #[test]
+    fn error_message_is_released_by_tor_string_free() {
+        update_last_error(io::Error::other("boom"));
+
+        unsafe {
+            let message = tor_last_error_message();
+            assert_eq!(CStr::from_ptr(message).to_str().unwrap(), "boom");
+            tor_string_free(message as *mut c_char);
+            tor_string_free(ptr::null_mut());
+        }
     }
 
     #[test]
