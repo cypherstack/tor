@@ -29,30 +29,30 @@ String releaseFileName(String target) => '$target-${libraryName(target)}';
 Future<String> fileHash(File file) async =>
     (await sha256.bind(file.openRead()).first).toString();
 
+/// Native inputs to track for Flutter's hook cache.
+///
+/// Directories are included so additions and deletions invalidate the build.
+/// Hidden entries are not native inputs and are skipped.
+Future<List<Uri>> sourceDependencies(Uri root) async => <Uri>[
+  for (final path in [
+    'rust/Cargo.toml',
+    'rust/Cargo.lock',
+    'rust/rust-toolchain.toml',
+    'rust/build.rs',
+    'hook/build.dart',
+    'lib/tor_ffi_plugin_bindings_generated.dart',
+    'rust/src/',
+  ])
+    root.resolve(path),
+  ...await _sourceEntries(Directory.fromUri(root.resolve('rust/src/'))),
+]..sort((a, b) => a.path.compareTo(b.path));
+
 // Hash paths and contents so additions, deletions and ABI changes invalidate
-// prebuilts. Track directories as well as files for Flutter's hook cache.
-// Hidden entries such as .DS_Store are not native inputs and are skipped.
+// prebuilts.
 Future<({String hash, List<Uri> dependencies})> sourceFingerprint(
   Uri root,
 ) async {
-  final dependencies = <Uri>[
-    for (final path in [
-      'rust/Cargo.toml',
-      'rust/Cargo.lock',
-      'rust/rust-toolchain.toml',
-      'rust/build.rs',
-      'hook/build.dart',
-      'lib/tor_ffi_plugin_bindings_generated.dart',
-      'rust/src/',
-      'rust/patches/',
-    ])
-      root.resolve(path),
-    for (final dir in ['rust/src/', 'rust/patches/'])
-      await for (final entry in Directory.fromUri(
-        root.resolve(dir),
-      ).list(recursive: true, followLinks: false))
-        if (!_isHidden(entry.uri, root)) entry.uri,
-  ]..sort((a, b) => a.path.compareTo(b.path));
+  final dependencies = await sourceDependencies(root);
   final hashes = StringBuffer();
   for (final uri in dependencies) {
     final type = await FileSystemEntity.type(
@@ -76,17 +76,30 @@ Future<({String hash, List<Uri> dependencies})> sourceFingerprint(
   );
 }
 
-bool _isHidden(Uri entry, Uri root) => entry.path
-    .substring(root.path.length)
-    .split('/')
-    .any((segment) => segment.startsWith('.'));
+/// Entries under [directory], without descending into skipped directories.
+Future<List<Uri>> _sourceEntries(Directory directory) async => [
+  await for (final entry in directory.list(followLinks: false))
+    if (!_isSkipped(entry)) ...[
+      entry.uri,
+      if (entry is Directory) ...await _sourceEntries(entry),
+    ],
+];
+
+/// Whether [entry] is hidden, such as .DS_Store.
+bool _isSkipped(FileSystemEntity entry) {
+  final name = entry.uri.pathSegments.lastWhere((s) => s.isNotEmpty);
+  return name.startsWith('.');
+}
 
 /// [bytes] with each CRLF replaced by LF.
-List<int> _lfLineEndings(List<int> bytes) => [
-  for (var i = 0; i < bytes.length; i++)
-    if (bytes[i] != 0x0d || i + 1 == bytes.length || bytes[i + 1] != 0x0a)
-      bytes[i],
-];
+List<int> _lfLineEndings(List<int> bytes) {
+  if (!bytes.contains(0x0d)) return bytes;
+  return [
+    for (var i = 0; i < bytes.length; i++)
+      if (bytes[i] != 0x0d || i + 1 == bytes.length || bytes[i + 1] != 0x0a)
+        bytes[i],
+  ];
+}
 
 String rustTarget(CodeConfig code) => switch ((
   code.targetOS,

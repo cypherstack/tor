@@ -32,3 +32,7 @@ build/
 rust/target/.rustc_info.json
 rust/target/debug/
 rust/target/CACHEDIR.TAG
+
+# Cargo output from building a vendored crate on its own.
+rust/patches/*/target/
+rust/patches/*/Cargo.lock

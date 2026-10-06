@@ -3,6 +3,8 @@
 * Bump arti to 2.6.0; needs Rust 1.91.
 * Include the vendored crates in `rust/patches/` in the prebuilt source
   fingerprint, so editing them invalidates prebuilts and the hook cache.
+* Leave Cargo output from building a vendored crate on its own (`target/` and
+  `Cargo.lock`) out of the native source fingerprint.
 * Fix `tor_client_bootstrap` and `tor_client_set_dormant` freeing the client
   handle Dart still holds. Add `tor_client_free`; `Tor.stop` now releases the
   client handle.
@@ -99,6 +101,8 @@
   can substitute the greeting without calling the real library.
 * Skip hidden files such as `.DS_Store` in the native source fingerprint and
   hash sources as bytes, so stray files no longer fail or invalidate builds.
+* Avoid hashing all Rust inputs during source builds; full fingerprints remain
+  required when selecting prebuilts.
 
 ## 0.1.0
 

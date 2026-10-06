@@ -9,11 +9,7 @@ Future<void> main(List<String> args) async {
     if (!input.config.buildCodeAssets) return;
     if (await usePrebuilt(input, output)) return;
 
-    // Cargo's dep-info, which RustBuilder tracks, omits the vendored crates in
-    // rust/patches, so declare the inputs the prebuilt fingerprint covers.
-    output.dependencies.addAll(
-      (await sourceFingerprint(input.packageRoot)).dependencies,
-    );
+    output.dependencies.addAll(await sourceDependencies(input.packageRoot));
 
     await const RustBuilder(
       assetName: 'tor_ffi_plugin_bindings_generated.dart',
