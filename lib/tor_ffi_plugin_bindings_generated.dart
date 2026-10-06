@@ -101,11 +101,16 @@ final class Tor extends ffi.Struct {
 
   external ffi.Pointer<ffi.Void> proxy;
 
+  @ffi.Uint16()
+  external int port;
+
   static ffi.Pointer<Tor> $allocate(
     ffi.Allocator $allocator, {
     required ffi.Pointer<ffi.Void> client,
     required ffi.Pointer<ffi.Void> proxy,
+    required int port,
   }) => $allocator<Tor>()
     ..ref.client = client
-    ..ref.proxy = proxy;
+    ..ref.proxy = proxy
+    ..ref.port = port;
 }

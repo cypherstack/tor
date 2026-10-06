@@ -8,13 +8,13 @@ use arti_client::config::CfgPath;
 use arti_client::{DormantMode, TorClient, TorClientConfig};
 use lazy_static::lazy_static;
 use std::ffi::{c_char, c_void, CStr};
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::Arc;
 use std::{io, ptr};
 use tokio::runtime::{Builder, Runtime};
 use tokio::task::JoinHandle;
-use tor_config::Listen;
 use tor_rtcompat::tokio::TokioNativeTlsRuntime;
-use tor_rtcompat::{NetStreamProvider, TcpListenOptions, ToplevelBlockOn};
+use tor_rtcompat::{NetStreamListener, NetStreamProvider, TcpListenOptions, ToplevelBlockOn};
 
 pub use crate::error::tor_last_error_message;
 #[cfg(not(target_os = "windows"))]
@@ -30,10 +30,15 @@ lazy_static! {
     static ref RUNTIME: io::Result<Runtime> = Builder::new_multi_thread().enable_all().build();
 }
 
+/// How many more OS-assigned ports to try when another process holds the
+/// IPv6 twin of the assigned port, before failing.
+const IPV6_BIND_RETRIES: u32 = 3;
+
 #[repr(C)]
 pub struct Tor {
     client: *mut c_void,
     proxy: *mut c_void,
+    port: u16,
 }
 
 /// Start a bootstrapped Tor client and a localhost SOCKS proxy.
@@ -51,6 +56,7 @@ pub unsafe extern "C" fn tor_start(
     let err_ret = Tor {
         client: ptr::null_mut(),
         proxy: ptr::null_mut(),
+        port: 0,
     };
 
     let state_dir = unwrap_or_return!(CStr::from_ptr(state_dir).to_str(), err_ret);
@@ -61,7 +67,8 @@ pub unsafe extern "C" fn tor_start(
     // Reserve the port before initializing storage or bootstrapping. On any
     // later failure these listeners are dropped and the port is released.
     let rt = unwrap_or_return!(proxy_runtime(), err_ret);
-    let listeners = unwrap_or_return!(bind_localhost(rt, &runtime, socks_port), err_ret);
+    let (listeners, socks_port) =
+        unwrap_or_return!(bind_localhost(rt, &runtime, socks_port), err_ret);
 
     let mut cfg_builder = TorClientConfig::builder();
     cfg_builder
@@ -88,6 +95,7 @@ pub unsafe extern "C" fn tor_start(
     Tor {
         client: Box::into_raw(client_box) as *mut c_void,
         proxy: Box::into_raw(proxy_handle_box) as *mut c_void,
+        port: socks_port,
     }
 }
 
@@ -191,39 +199,115 @@ fn start_proxy(
 
 /// Bind `port` on every localhost address family that is available.
 ///
+/// IPv4 is authoritative: the IPv4 listener's port is the published port, and
+/// IPv6 loopback is added on the same port. IPv4 alone is served only when
+/// IPv6 is unavailable on the host. When the OS picks the port and another
+/// process already holds its IPv6 twin, a fresh port is tried a few times
+/// before failing, since a client resolving `localhost` to `::1` would reach
+/// that process.
+///
 /// This blocks on `rt` so the listeners are registered with the reactor that
 /// later runs the accept loop, and so the caller sees a bind failure before
 /// the port is published.
 fn bind_localhost(
     rt: &Runtime,
     runtime: &TokioNativeTlsRuntime,
-    port: u16,
-) -> io::Result<Vec<Listener>> {
+    requested_port: u16,
+) -> io::Result<(Vec<Listener>, u16)> {
     rt.block_on(async {
-        let listen = Listen::new_localhost(port);
-        let mut listeners = Vec::new();
-        for addr in listen
-            .ip_addrs()
-            .map_err(|e| io::Error::other(e.to_string()))?
-            .flatten()
-        {
-            match runtime.listen(&addr, &TcpListenOptions::default()).await {
-                Ok(listener) => listeners.push(listener),
-                #[cfg(unix)]
-                Err(ref e) if e.raw_os_error() == Some(libc::EAFNOSUPPORT) => {}
-                Err(e) => {
-                    return Err(io::Error::new(
-                        e.kind(),
-                        format!("Can't listen on {addr}: {e}"),
-                    ))
+        let options = TcpListenOptions::default();
+        let mut retries_left = if requested_port == 0 {
+            IPV6_BIND_RETRIES
+        } else {
+            0
+        };
+        loop {
+            let ipv4 = SocketAddr::new(Ipv4Addr::LOCALHOST.into(), requested_port);
+            let ipv4_listener = runtime
+                .listen(&ipv4, &options)
+                .await
+                .map_err(|e| io::Error::new(e.kind(), format!("Can't listen on {ipv4}: {e}")))?;
+            let port = ipv4_listener.local_addr()?.port();
+
+            let ipv6 = SocketAddr::new(Ipv6Addr::LOCALHOST.into(), port);
+            let error = match runtime.listen(&ipv6, &options).await {
+                Ok(listener) => return Ok((vec![ipv4_listener, listener], port)),
+                Err(error) => error,
+            };
+            match ipv6_bind_fallback(requested_port, retries_left, &error) {
+                Ipv6Fallback::Ipv4Only => return Ok((vec![ipv4_listener], port)),
+                Ipv6Fallback::Retry => {
+                    retries_left -= 1;
+                    drop(ipv4_listener);
                 }
+                Ipv6Fallback::Fail => return Err(ipv6_bind_error(requested_port, ipv6, error)),
             }
         }
-        if listeners.is_empty() {
-            return Err(io::Error::other("Couldn't open SOCKS listeners"));
-        }
-        Ok(listeners)
     })
+}
+
+/// The error reported when IPv6 loopback could not be bound on `ipv6`.
+fn ipv6_bind_error(requested_port: u16, ipv6: SocketAddr, error: io::Error) -> io::Error {
+    let reason = if requested_port == 0 && error.kind() == io::ErrorKind::AddrInUse {
+        format!(
+            "the IPv6 twin of the assigned port was occupied after {} attempts ({error})",
+            IPV6_BIND_RETRIES + 1
+        )
+    } else {
+        error.to_string()
+    };
+    io::Error::new(error.kind(), format!("Can't listen on {ipv6}: {reason}"))
+}
+
+/// What to do when IPv6 loopback could not be bound on the IPv4 port.
+#[derive(Debug, PartialEq, Eq)]
+enum Ipv6Fallback {
+    /// Serve IPv4 loopback only.
+    Ipv4Only,
+    /// Release the IPv4 listener and ask the OS for another port.
+    Retry,
+    /// Report the error. This includes an OS-assigned port whose IPv6 twin
+    /// stayed occupied after every retry.
+    Fail,
+}
+
+fn ipv6_bind_fallback(requested_port: u16, retries_left: u32, error: &io::Error) -> Ipv6Fallback {
+    if ipv6_is_unavailable(error) {
+        return Ipv6Fallback::Ipv4Only;
+    }
+    // Only an OS-assigned port can be swapped for another one. A port the
+    // caller asked for is reported as occupied, as it is for IPv4. Serving
+    // IPv4 alone would leave `[::1]` on the published port to another process.
+    if requested_port == 0 && error.kind() == io::ErrorKind::AddrInUse && retries_left > 0 {
+        return Ipv6Fallback::Retry;
+    }
+    Ipv6Fallback::Fail
+}
+
+/// Whether IPv6 loopback is unavailable on this host. IPv4 remains usable in
+/// this case, so the SOCKS proxy should still start.
+fn ipv6_is_unavailable(error: &io::Error) -> bool {
+    if matches!(
+        error.kind(),
+        io::ErrorKind::AddrNotAvailable | io::ErrorKind::Unsupported
+    ) {
+        return true;
+    }
+
+    #[cfg(unix)]
+    if error.raw_os_error() == Some(libc::EAFNOSUPPORT) {
+        return true;
+    }
+
+    // std maps only WSAEADDRNOTAVAIL to a typed kind on Windows. A disabled
+    // IPv6 stack fails socket creation with WSAEAFNOSUPPORT (10047) or
+    // WSAEPROTONOSUPPORT (10043), which arrive uncategorized.
+    #[cfg(windows)]
+    if matches!(error.raw_os_error(), Some(10047 | 10043)) {
+        return true;
+    }
+
+    false
 }
 
 // Due to its simple signature this dummy function is the one added (unused) to iOS swift codebase to force Xcode to link the lib
@@ -367,18 +451,103 @@ mod tests {
 
     #[test]
     fn bind_localhost_holds_the_port_until_dropped() {
-        let port = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
-            .unwrap()
-            .local_addr()
-            .unwrap()
-            .port();
         let arti_rt = TokioNativeTlsRuntime::create().unwrap();
+        let rt = proxy_runtime().unwrap();
 
-        let listeners = bind_localhost(proxy_runtime().unwrap(), &arti_rt, port).unwrap();
+        // A requested port must be honored and held. Another test may take the
+        // freed port first, so retry with a fresh one.
+        let (listeners, port) = (0..8)
+            .find_map(|_| {
+                let port = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
+                    .unwrap()
+                    .local_addr()
+                    .unwrap()
+                    .port();
+                match bind_localhost(rt, &arti_rt, port) {
+                    Ok((listeners, bound_port)) => {
+                        assert_eq!(bound_port, port);
+                        Some((listeners, port))
+                    }
+                    Err(e) if e.kind() == io::ErrorKind::AddrInUse => None,
+                    Err(e) => panic!("bind_localhost failed: {e}"),
+                }
+            })
+            .expect("no free port after 8 attempts");
 
         assert!(
             TcpListener::bind((Ipv4Addr::LOCALHOST, port)).is_err(),
             "port {port} was published without being held"
+        );
+        drop(listeners);
+        TcpListener::bind((Ipv4Addr::LOCALHOST, port)).unwrap();
+    }
+
+    #[test]
+    fn ipv6_bind_fallback_retries_only_os_assigned_ports() {
+        let in_use = io::Error::from(io::ErrorKind::AddrInUse);
+        let unavailable = io::Error::from(io::ErrorKind::AddrNotAvailable);
+        let denied = io::Error::from(io::ErrorKind::PermissionDenied);
+
+        assert_eq!(ipv6_bind_fallback(0, 2, &in_use), Ipv6Fallback::Retry);
+        // Out of retries, the IPv6 twin still belongs to another process.
+        assert_eq!(ipv6_bind_fallback(0, 0, &in_use), Ipv6Fallback::Fail);
+        assert_eq!(ipv6_bind_fallback(9050, 0, &in_use), Ipv6Fallback::Fail);
+        assert_eq!(
+            ipv6_bind_fallback(9050, 0, &unavailable),
+            Ipv6Fallback::Ipv4Only
+        );
+        assert_eq!(ipv6_bind_fallback(0, 2, &denied), Ipv6Fallback::Fail);
+
+        #[cfg(windows)]
+        {
+            let no_ipv6 = io::Error::from_raw_os_error(10047);
+            assert_eq!(ipv6_bind_fallback(0, 0, &no_ipv6), Ipv6Fallback::Ipv4Only);
+            assert_eq!(
+                ipv6_bind_fallback(9050, 0, &no_ipv6),
+                Ipv6Fallback::Ipv4Only
+            );
+        }
+    }
+
+    #[test]
+    fn ipv6_bind_error_names_the_exhausted_retries() {
+        let ipv6 = SocketAddr::new(Ipv6Addr::LOCALHOST.into(), 41000);
+        let in_use = || io::Error::from(io::ErrorKind::AddrInUse);
+
+        let exhausted = ipv6_bind_error(0, ipv6, in_use());
+        assert_eq!(exhausted.kind(), io::ErrorKind::AddrInUse);
+        let message = exhausted.to_string();
+        assert!(
+            message.contains("IPv6 twin of the assigned port was occupied after 4 attempts"),
+            "{message}"
+        );
+
+        let requested = ipv6_bind_error(41000, ipv6, in_use()).to_string();
+        assert!(
+            requested.starts_with("Can't listen on [::1]:41000"),
+            "{requested}"
+        );
+        assert!(!requested.contains("attempts"), "{requested}");
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn windows_reports_a_disabled_ipv6_stack_as_unavailable() {
+        // WSAEAFNOSUPPORT and WSAEPROTONOSUPPORT have no typed ErrorKind.
+        assert!(ipv6_is_unavailable(&io::Error::from_raw_os_error(10047)));
+        assert!(ipv6_is_unavailable(&io::Error::from_raw_os_error(10043)));
+    }
+
+    #[test]
+    fn bind_localhost_allocates_and_reports_one_port() {
+        let arti_rt = TokioNativeTlsRuntime::create().unwrap();
+
+        let (listeners, port) = bind_localhost(proxy_runtime().unwrap(), &arti_rt, 0).unwrap();
+
+        assert_ne!(port, 0);
+        assert!(
+            TcpListener::bind((Ipv4Addr::LOCALHOST, port)).is_err(),
+            "reported port {port} was not held by the proxy listener"
         );
         drop(listeners);
         TcpListener::bind((Ipv4Addr::LOCALHOST, port)).unwrap();

@@ -6,7 +6,6 @@ import 'dart:async';
 import 'dart:ffi';
 import 'dart:io';
 import 'dart:isolate';
-import 'dart:math';
 
 import 'package:ffi/ffi.dart';
 import 'package:meta/meta.dart';
@@ -22,7 +21,7 @@ class CouldntBootstrapDirectory implements Exception {
 enum TorStatus { on, starting, off }
 
 /// Native handles produced by a successful [TorNative.start].
-typedef TorHandles = ({Pointer<Void> client, Pointer<Void> proxy});
+typedef TorHandles = ({Pointer<Void> client, Pointer<Void> proxy, int port});
 
 /// The native calls [Tor] makes. Tests substitute a fake to drive the
 /// lifecycle without starting Tor.
@@ -34,16 +33,17 @@ class TorNative {
   ///
   /// Throws the Rust error if the native start fails.
   Future<TorHandles> start(int port, String stateDir, String cacheDir) async {
-    final (client, proxy) = await Isolate.run(
+    final (client, proxy, boundPort) = await Isolate.run(
       () => _startInIsolate(port, stateDir, cacheDir),
     );
     return (
       client: Pointer<Void>.fromAddress(client),
       proxy: Pointer<Void>.fromAddress(proxy),
+      port: boundPort,
     );
   }
 
-  static (int, int) _startInIsolate(
+  static (int, int, int) _startInIsolate(
     int port,
     String stateDir,
     String cacheDir,
@@ -59,7 +59,7 @@ class TorNative {
       Tor.throwRustException();
     }
 
-    return (tor.client.address, tor.proxy.address);
+    return (tor.client.address, tor.proxy.address, tor.port);
   }
 
   /// Bootstrap [client]. Throws the Rust error on failure.
@@ -157,15 +157,9 @@ class Tor {
       final stateDir = await Directory('$torDataDirPath/tor_state').create();
       final cacheDir = await Directory('$torDataDirPath/tor_cache').create();
 
-      // Generate a random port.
-      final int? newPort = await _getRandomUnusedPort();
-
-      if (newPort == null) {
-        throw Exception("Failed to get random unused port!");
-      }
-
-      // Start the Tor service in an isolate.
-      final tor = await _native.start(newPort, stateDir.path, cacheDir.path);
+      // Let the OS allocate the port while Rust binds the real listeners. This
+      // avoids a probe-then-bind race and keeps the published port reserved.
+      final tor = await _native.start(0, stateDir.path, cacheDir.path);
 
       // Set the client pointer and started flag.
       _clientPtr = tor.client;
@@ -175,7 +169,7 @@ class Tor {
       _bootstrap();
 
       // Set the proxy port and change status.
-      _proxyPort = newPort;
+      _proxyPort = tor.port;
       _status = TorStatus.on;
     } catch (_) {
       // Release anything the native start produced before bootstrap failed;
@@ -244,25 +238,6 @@ class Tor {
 
   Pointer<Void> _clientPtr = nullptr;
   Pointer<Void> _proxyPtr = nullptr;
-
-  Future<int?> _getRandomUnusedPort({List<int> excluded = const []}) async {
-    var random = Random.secure();
-    int potentialPort = 0;
-
-    retry:
-    while (potentialPort <= 0 || excluded.contains(potentialPort)) {
-      potentialPort = random.nextInt(65535);
-      try {
-        var socket = await ServerSocket.bind("0.0.0.0", potentialPort);
-        socket.close();
-        return potentialPort;
-      } catch (_) {
-        continue retry;
-      }
-    }
-
-    return null;
-  }
 
   // Future<void> restart() async {
   //   // TODO: arti seems to recover by itself and there is no client restart fn

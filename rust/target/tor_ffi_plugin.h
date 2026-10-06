@@ -6,6 +6,7 @@
 typedef struct Tor {
   void *client;
   void *proxy;
+  uint16_t port;
 } Tor;
 
 /**

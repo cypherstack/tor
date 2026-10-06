@@ -4,8 +4,9 @@
 * Fix `tor_client_bootstrap` and `tor_client_set_dormant` freeing the client
   handle Dart still holds. Add `tor_client_free`; `Tor.stop` now releases the
   client handle.
-* Bind the SOCKS listeners before `tor_start` returns, so a port collision
-  fails `Tor.start` instead of leaving a dead proxy behind a published port.
+* Let the OS allocate the SOCKS port while Rust binds the real IPv4 listener,
+  removing the probe-then-bind race. The same port is used for optional IPv6
+  loopback and returned to Dart while the listeners remain reserved.
 * `Tor.stop` resets the wrapper's state, so Tor can be started again.
 * `Tor.start` and `Tor.stop` run one at a time. A `stop` issued while a
   `start` is in progress waits for it and then tears it down.
@@ -17,6 +18,16 @@
   the reported status while traffic kept flowing. **API change:** it returns
   a `Future<void>` that can throw on release failure. Await it or attach an
   error handler when calling from a synchronous dispose method.
+* When the OS assigns the SOCKS port and its IPv6 loopback twin is held by
+  another process, try up to three more ports, then fail to start with an
+  error saying the twin stayed occupied. Serving IPv4 alone there would let
+  clients that resolve `localhost` to `::1` reach the other process. IPv4-only
+  loopback is used only when IPv6 is unavailable on the host. A caller-requested
+  non-zero port is not retried, and start fails if its IPv6 twin is held by
+  another process. Dart always passes zero, so only direct C callers see this.
+* Start on Windows hosts with IPv6 disabled. Winsock reports the missing
+  address family as `WSAEAFNOSUPPORT`, which was not recognized, so
+  `Tor.start` failed instead of serving IPv4 loopback.
 * Route `Tor.hello` through the injectable native layer so test instances
   can substitute the greeting without calling the real library.
 

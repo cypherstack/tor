@@ -39,6 +39,7 @@ class FakeTorNative implements TorNative {
     return (
       client: Pointer<Void>.fromAddress(client),
       proxy: Pointer<Void>.fromAddress(proxy),
+      port: 19050,
     );
   }
 
