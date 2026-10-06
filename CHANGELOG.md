@@ -26,6 +26,8 @@
   its state and cache files, and completes once they are released. Before,
   every start leaked a client that kept the cache open, so the data
   directory could not be deleted on Windows.
+* Include the vendored crates in `rust/patches/` in the prebuilt source
+  fingerprint, so editing them invalidates prebuilts and the hook cache.
 
 ## 0.1.0
 

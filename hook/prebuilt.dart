@@ -43,12 +43,14 @@ Future<({String hash, List<Uri> dependencies})> sourceFingerprint(
       'hook/build.dart',
       'lib/tor_ffi_plugin_bindings_generated.dart',
       'rust/src/',
+      'rust/patches/',
     ])
       root.resolve(path),
-    await for (final entry in Directory.fromUri(
-      root.resolve('rust/src/'),
-    ).list(recursive: true, followLinks: false))
-      entry.uri,
+    for (final dir in ['rust/src/', 'rust/patches/'])
+      await for (final entry in Directory.fromUri(
+        root.resolve(dir),
+      ).list(recursive: true, followLinks: false))
+        entry.uri,
   ]..sort((a, b) => a.path.compareTo(b.path));
   final hashes = StringBuffer();
   for (final uri in dependencies) {
