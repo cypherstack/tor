@@ -9,11 +9,11 @@ Future<void> main(List<String> args) async {
     if (!input.config.buildCodeAssets) return;
     if (await usePrebuilt(input, output)) return;
 
-    output.dependencies.addAll([
-      input.packageRoot.resolve('rust/Cargo.toml'),
-      input.packageRoot.resolve('rust/Cargo.lock'),
-      input.packageRoot.resolve('rust/rust-toolchain.toml'),
-    ]);
+    // Cargo's dep-info, which RustBuilder tracks, omits the vendored crates in
+    // rust/patches, so declare the inputs the prebuilt fingerprint covers.
+    output.dependencies.addAll(
+      (await sourceFingerprint(input.packageRoot)).dependencies,
+    );
 
     await const RustBuilder(
       assetName: 'tor_ffi_plugin_bindings_generated.dart',

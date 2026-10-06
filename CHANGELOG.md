@@ -1,6 +1,8 @@
 ## 0.2.0
 
 * Bump arti to 2.6.0; needs Rust 1.91.
+* Include the vendored crates in `rust/patches/` in the prebuilt source
+  fingerprint, so editing them invalidates prebuilts and the hook cache.
 * Fix `tor_client_bootstrap` and `tor_client_set_dormant` freeing the client
   handle Dart still holds. Add `tor_client_free`; `Tor.stop` now releases the
   client handle.
