@@ -55,7 +55,12 @@ class FakeTorNative implements TorNative {
   void stopProxy(Pointer<Void> proxy) => liveProxies.remove(proxy.address);
 
   @override
-  void freeClient(Pointer<Void> client) => liveClients.remove(client.address);
+  Future<void> freeClient(Pointer<Void> client) async {
+    // Complete later, like the native free does, so tests catch callers that
+    // do not wait for it.
+    await Future<void>.delayed(Duration.zero);
+    liveClients.remove(client.address);
+  }
 }
 
 void main() {
