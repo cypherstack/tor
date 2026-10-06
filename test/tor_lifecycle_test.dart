@@ -35,6 +35,30 @@ void main() {
     );
   });
 
+  test('native start reports an occupied port', () async {
+    final occupied = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(occupied.close);
+    final dir = await Directory.systemTemp.createTemp('tor-busy-port-');
+    addTearDown(() => dir.delete(recursive: true));
+
+    // Fails before storage or network are touched, and runs the error string
+    // and path string cleanup against the real library.
+    await expectLater(
+      const TorNative().start(
+        occupied.port,
+        '${dir.path}/state',
+        '${dir.path}/cache',
+      ),
+      throwsA(
+        isA<Exception>().having(
+          (e) => e.toString(),
+          'message',
+          contains("Can't listen on"),
+        ),
+      ),
+    );
+  });
+
   test(
     'stop resets state and allows a fresh start',
     () async {

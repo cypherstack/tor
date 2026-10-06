@@ -62,7 +62,7 @@ external void tor_hello();
 ///
 /// # Safety
 /// This function has no preconditions. The returned string is owned by the
-/// caller and must only be reclaimed with Rust's `CString::from_raw`.
+/// caller and must be released exactly once with [`tor_string_free`].
 @ffi.Native<ffi.Pointer<ffi.Char> Function()>()
 external ffi.Pointer<ffi.Char> tor_last_error_message();
 
@@ -95,6 +95,14 @@ external Tor tor_start(
   ffi.Pointer<ffi.Char> state_dir,
   ffi.Pointer<ffi.Char> cache_dir,
 );
+
+/// Release a string returned by [`tor_last_error_message`].
+///
+/// # Safety
+/// `message` must be null or a pointer returned by `tor_last_error_message`
+/// that has not been released yet. It must not be used after this call.
+@ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Char>)>()
+external void tor_string_free(ffi.Pointer<ffi.Char> message);
 
 final class Tor extends ffi.Struct {
   external ffi.Pointer<ffi.Void> client;
