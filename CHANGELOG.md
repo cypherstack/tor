@@ -30,6 +30,8 @@
   fingerprint, so editing them invalidates prebuilts and the hook cache.
 * Skip hidden files such as `.DS_Store` in the native source fingerprint and
   hash sources as bytes, so stray files no longer fail or invalidate builds.
+* Leave Cargo output from building a vendored crate on its own (`target/` and
+  `Cargo.lock`) out of the native source fingerprint.
 
 ## 0.1.0
 
