@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use cbindgen::{Config, Language};
+use cbindgen::{Config, EnumConfig, Language};
 use glob::glob;
 use std::env;
 use std::path::PathBuf;
@@ -18,9 +18,16 @@ fn main() {
         .join(format!("{}.h", package_name))
         .display()
         .to_string();
+    println!("cargo:rerun-if-env-changed=CARGO_TARGET_DIR");
+    println!("cargo:rustc-env=TOR_FFI_PLUGIN_HEADER={}", output_file);
 
     let config = Config {
         language: Language::C,
+        cpp_compat: true,
+        enumeration: EnumConfig {
+            prefix_with_name: true,
+            ..Default::default()
+        },
         ..Default::default()
     };
 

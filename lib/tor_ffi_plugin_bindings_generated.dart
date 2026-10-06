@@ -13,30 +13,51 @@ library;
 
 import 'dart:ffi' as ffi;
 
-/// Ensure the client has bootstrapped.
+/// Bootstrap the client, returning on cancellation or after `timeout_millis`.
+/// A null `client` returns `NullClient`.
 ///
 /// # Safety
-/// `client` must be a live, non-null handle returned by [`tor_start`].
+/// `client` must be null or a live handle returned by [`tor_start`].
 /// It must not be freed while this call is in progress.
-@ffi.Native<ffi.Bool Function(ffi.Pointer<ffi.Void>)>()
-external bool tor_client_bootstrap(ffi.Pointer<ffi.Void> client);
+@ffi.Native<TorBootstrapStatus$1 Function(ffi.Pointer<ffi.Void>, ffi.Uint64)>()
+external int tor_client_bootstrap(
+  ffi.Pointer<ffi.Void> client,
+  int timeout_millis,
+);
+
+/// Ask an in-progress bootstrap to return promptly. Null is accepted.
+///
+/// Cancellation is sticky: once this is called, every later
+/// [`tor_client_bootstrap`] on the same handle returns `Cancelled` at once.
+/// To bootstrap again, free the handle with [`tor_client_free`] and create a
+/// new one with [`tor_start`].
+///
+/// # Safety
+/// `client` must be null or a live handle returned by [`tor_start`]. It may be
+/// called concurrently with [`tor_client_bootstrap`], but not with or after
+/// [`tor_client_free`].
+@ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Void>)>()
+external void tor_client_cancel_bootstrap(ffi.Pointer<ffi.Void> client);
 
 /// Release the client handle returned by [`tor_start`].
 ///
-/// The handle must not be used after this call. The proxy task keeps its own
-/// reference to the underlying client, so stopping the proxy and freeing the
-/// handle can happen in either order.
+/// This shuts down the client's background tasks and closes its state and
+/// cache files, which can block for a few seconds. Stop the proxy first: it
+/// keeps its own reference to the client, but cannot serve connections once
+/// the client is freed.
 ///
 /// # Safety
 /// `client` must be null or a live handle returned by [`tor_start`].
 /// No other call may use the handle concurrently with or after this call.
+/// It must not be called from within an async runtime.
 @ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Void>)>()
 external void tor_client_free(ffi.Pointer<ffi.Void> client);
 
-/// Change the client's dormant mode.
+/// Change the client's dormant mode. A null `client` is ignored and sets the
+/// message returned by [`tor_last_error_message`].
 ///
 /// # Safety
-/// `client` must be a live, non-null handle returned by [`tor_start`].
+/// `client` must be null or a live handle returned by [`tor_start`].
 /// It must not be freed while this call is in progress.
 @ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Bool)>()
 external void tor_client_set_dormant(
@@ -66,11 +87,26 @@ external void tor_hello();
 @ffi.Native<ffi.Pointer<ffi.Char> Function()>()
 external ffi.Pointer<ffi.Char> tor_last_error_message();
 
-/// Stop the proxy and release its handle. Null is accepted.
+/// Start accepting SOCKS connections on the listeners reserved by [`tor_start`].
+/// Repeated calls are harmless.
+///
+/// # Safety
+/// `proxy` must be a live, non-null proxy handle returned by [`tor_start`]. It
+/// must not be used concurrently or after [`tor_proxy_stop`].
+@ffi.Native<ffi.Bool Function(ffi.Pointer<ffi.Void>)>()
+external bool tor_proxy_start(ffi.Pointer<ffi.Void> proxy);
+
+/// Stop the proxy, or release its reserved listeners if it was not started.
+/// Null is accepted.
+///
+/// This waits for the accept loop to exit, so the listeners and the loop's
+/// reference to the client are released by the time it returns. Call it
+/// before [`tor_client_free`].
 ///
 /// # Safety
 /// `proxy` must be null or a live proxy handle returned by [`tor_start`].
 /// A non-null handle must be passed to this function only once.
+/// It must not be called from within an async runtime.
 @ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Void>)>()
 external void tor_proxy_stop(ffi.Pointer<ffi.Void> proxy);
 
@@ -81,7 +117,7 @@ external void tor_proxy_stop(ffi.Pointer<ffi.Void> proxy);
 @ffi.Native<ffi.Uint64 Function(ffi.Uint64)>()
 external int tor_set_nofile_limit(int limit);
 
-/// Start a bootstrapped Tor client and a localhost SOCKS proxy.
+/// Create a Tor client and a localhost SOCKS proxy.
 ///
 /// # Safety
 /// `state_dir` and `cache_dir` must point to valid, NUL-terminated strings
@@ -122,3 +158,39 @@ final class Tor extends ffi.Struct {
     ..ref.proxy = proxy
     ..ref.port = port;
 }
+
+/// The outcome of [`tor_client_bootstrap`].
+///
+/// Every code other than `Ok` also sets the message returned by
+/// [`tor_last_error_message`].
+enum TorBootstrapStatus {
+  /// The client bootstrapped.
+  Ok(0),
+
+  /// [`tor_client_cancel_bootstrap`] was called on the handle.
+  Cancelled(1),
+
+  /// The deadline passed before bootstrap finished.
+  TimedOut(2),
+
+  /// Arti reported an error.
+  Failed(3),
+
+  /// The client handle was null.
+  NullClient(4);
+
+  final int value;
+  const TorBootstrapStatus(this.value);
+
+  static TorBootstrapStatus fromValue(int value) => switch (value) {
+    0 => Ok,
+    1 => Cancelled,
+    2 => TimedOut,
+    3 => Failed,
+    4 => NullClient,
+    _ => throw ArgumentError('Unknown value for TorBootstrapStatus: $value'),
+  };
+}
+
+typedef TorBootstrapStatus$1 = ffi.Int32;
+typedef DartTorBootstrapStatus = int;

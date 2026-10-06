@@ -6,14 +6,40 @@
   client handle.
 * Let the OS allocate the SOCKS port while Rust binds the real IPv4 listener,
   removing the probe-then-bind race. The same port is used for optional IPv6
-  loopback and returned to Dart while the listeners remain reserved.
+  loopback and returned to Dart while the listeners remain reserved. The SOCKS
+  accept loop starts only after bootstrap succeeds.
+* **Breaking change for C callers:** `tor_start` returns
+  `struct Tor { client, proxy, port }`. The SOCKS listeners are bound but idle
+  until `tor_proxy_start(proxy)` is called after a successful bootstrap.
+  Dart's `Tor.start` does this for you.
 * `Tor.stop` resets the wrapper's state, so Tor can be started again.
-* `Tor.start` and `Tor.stop` run one at a time. A `stop` issued while a
-  `start` is in progress waits for it and then tears it down.
-* Concurrent `Tor.start` calls share one attempt and complete only when Tor is
-  ready, or fail together with the same error.
+* **Behavior change:** give bootstrap a configurable two-minute default
+  deadline. Before this release `Tor.start` waited indefinitely for
+  bootstrap; pass a longer `bootstrapTimeout` to keep waiting on slow
+  networks. A `stop` issued during bootstrap cancels it promptly before
+  releasing the native handles.
+* Add `tor_client_cancel_bootstrap`. Cancellation is permanent for the
+  handle; free it and call `tor_start` again to bootstrap anew.
+* `tor_client_bootstrap` returns a `TorBootstrapStatus` code (ok, cancelled,
+  timed out, failed, null client) instead of a bool, and Dart maps it without
+  matching error text. C enumerators are prefixed with `TorBootstrapStatus_`
+  to avoid collisions with application enums; their numeric values and Dart
+  names are unchanged. The header also supports C++ callers. A passed deadline throws the new `TorBootstrapTimeout`
+  instead of a plain `Exception`.
+* Report Arti's full cause chain on bootstrap failure in the error message
+  Dart receives, without repeating a cause already included as the exact
+  suffix of its parent's message.
+* A null client handle no longer aborts the process: `tor_client_bootstrap`
+  returns `NullClient` and `tor_client_set_dormant` does nothing; both set
+  the last error message.
+* Concurrent `Tor.start` calls with the same raw data directory and timeout
+  share one attempt and complete when Tor is ready, or fail together with the
+  same error. Other starts queue behind it and either reuse the running
+  instance or fail with a `StateError` for a different data directory.
 * Release the native client and proxy when bootstrap fails during
-  `Tor.start`, instead of leaving the proxy running.
+  `Tor.start`, instead of leaving the proxy running. Preserve the bootstrap
+  error and stack if cleanup also fails; print the secondary cleanup failure
+  and expose it through `lastCleanupError` and `lastCleanupStackTrace`.
 * `Tor.disable` now stops the proxy like `Tor.stop`; before, it only changed
   the reported status while traffic kept flowing. **API change:** it returns
   a `Future<void>` that can throw on release failure. Await it or attach an
@@ -22,6 +48,29 @@
 * Add `tor_string_free` and use it to release Rust error messages after
   Dart copies them.
 * Strip NUL bytes from Rust error messages instead of panicking across FFI.
+* `Tor.stop` now shuts down the client's runtime, releasing its threads and
+  its state and cache files, and completes once they are released. Shutdown
+  waits up to five seconds for blocking storage work; a write still running
+  after that may keep its file open briefly after the future completes. Before,
+  every start leaked a client that kept the cache open, so the data directory could
+  not be deleted on Windows. If the release itself fails, `stop` throws and
+  the next `start` or `stop` retries it before opening a new client. If proxy
+  release fails, retain its client too and retry the proxy before freeing it.
+* `Tor.start` after an unawaited `Tor.stop` restarts Tor instead of returning
+  at once and letting the queued stop leave it off. Starts always queue behind
+  earlier calls; a start with a different data directory than the running
+  instance fails with a `StateError` and leaves it running.
+* `Tor.status` stays `on` while releasing a running instance, including when
+  release fails and handles remain for retry. Failed startup cleanup stays
+  `starting`; the next `start` or `stop` retries teardown before creating a new
+  client. Await a successful `stop` before deleting the data directory.
+  Status tracks lifecycle transitions and does not detect an unexpected SOCKS
+  accept-loop exit after startup. `Tor.port` throws as soon as the proxy has stopped,
+  with the message "Tor proxy is not running" instead of "Tor proxy port is
+  unexpectedly null"; the type is still `Exception`.
+* `tor_proxy_stop` waits for the SOCKS accept loop to exit before returning,
+  so the listeners and its reference to the client are released, and Dart
+  runs it on a worker isolate.
 * When the OS assigns the SOCKS port and its IPv6 loopback twin is held by
   another process, try up to three more ports, then fail to start with an
   error saying the twin stayed occupied. Serving IPv4 alone there would let
@@ -32,6 +81,16 @@
 * Start on Windows hosts with IPv6 disabled. Winsock reports the missing
   address family as `WSAEAFNOSUPPORT`, which was not recognized, so
   `Tor.start` failed instead of serving IPv4 loopback.
+* Reject bootstrap timeouts under one millisecond before starting the native
+  client.
+* `Tor.start` asynchronously creates the data directory and resolves its
+  physical path inside the queued start before comparing it with the running
+  instance. Paths through symbolic links or trailing separators reuse that
+  instance, and on macOS `/var/...` and `/private/var/...` no longer conflict.
+  When starting from off, status reports `starting` as soon as `start` is
+  called, before the queued start runs.
+  A path that cannot be created fails with the `FileSystemException` and restores
+  status to `off` if no native handles remain.
 * Route `Tor.hello` through the injectable native layer so test instances
   can substitute the greeting without calling the real library.
 

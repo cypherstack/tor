@@ -26,7 +26,18 @@ pub unsafe extern "C" fn tor_last_error_message() -> *const c_char {
 
     // CString::new rejects interior NULs, and a panic here would abort the
     // process at the FFI boundary.
-    let error_message = last_error.to_string().replace('\0', "");
+    let mut error_message = last_error.to_string().replace('\0', "");
+    let mut cause = last_error.source();
+    while let Some(error) = cause {
+        let message = error.to_string().replace('\0', "");
+        // Some Display implementations already include their source. Only
+        // omit an exact, colon-delimited suffix, never a substring match.
+        if error_message != message && !error_message.ends_with(&format!(": {message}")) {
+            error_message.push_str(": ");
+            error_message.push_str(&message);
+        }
+        cause = error.source();
+    }
     CString::new(error_message).unwrap().into_raw()
 }
 
@@ -78,4 +89,90 @@ pub fn update_last_error<E: Error + 'static>(err: E) {
 /// Retrieve the most recent error, clearing it in the process.
 pub fn take_last_error() -> Option<Box<dyn Error>> {
     LAST_ERROR.with(|prev| prev.borrow_mut().take())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ffi::CStr;
+    use std::{fmt, io};
+
+    #[derive(Debug)]
+    struct BootstrapError(io::Error);
+
+    impl fmt::Display for BootstrapError {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "bootstrap failed")
+        }
+    }
+
+    impl Error for BootstrapError {
+        fn source(&self) -> Option<&(dyn Error + 'static)> {
+            Some(&self.0)
+        }
+    }
+
+    fn take_message() -> String {
+        unsafe {
+            let message = tor_last_error_message();
+            let text = CStr::from_ptr(message).to_string_lossy().into_owned();
+            tor_string_free(message.cast_mut());
+            text
+        }
+    }
+
+    #[test]
+    fn error_message_includes_causes_in_order() {
+        update_last_error(BootstrapError(io::Error::other("storage unavailable")));
+        assert_eq!(take_message(), "bootstrap failed: storage unavailable");
+
+        update_last_error(io::Error::other("standalone error"));
+        assert_eq!(take_message(), "standalone error");
+    }
+    #[derive(Debug)]
+    struct Context {
+        message: &'static str,
+        source: Box<dyn Error>,
+        display_source: bool,
+    }
+
+    impl fmt::Display for Context {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "{}", self.message)?;
+            if self.display_source {
+                write!(f, ": {}", self.source)?;
+            }
+            Ok(())
+        }
+    }
+
+    impl Error for Context {
+        fn source(&self) -> Option<&(dyn Error + 'static)> {
+            Some(self.source.as_ref())
+        }
+    }
+
+    #[test]
+    fn error_message_does_not_repeat_embedded_causes() {
+        for outer_embeds in [false, true] {
+            update_last_error(Context {
+                message: "top",
+                source: Box::new(Context {
+                    message: "cause",
+                    source: Box::new(io::Error::other("root")),
+                    display_source: true,
+                }),
+                display_source: outer_embeds,
+            });
+            assert_eq!(take_message(), "top: cause: root");
+        }
+
+        // Shared words are not evidence that a cause is already embedded.
+        update_last_error(Context {
+            message: "root failed during bootstrap",
+            source: Box::new(io::Error::other("root failed")),
+            display_source: false,
+        });
+        assert_eq!(take_message(), "root failed during bootstrap: root failed");
+    }
 }

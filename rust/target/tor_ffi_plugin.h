@@ -3,14 +3,54 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+/**
+ * The outcome of [`tor_client_bootstrap`].
+ *
+ * Every code other than `Ok` also sets the message returned by
+ * [`tor_last_error_message`].
+ */
+enum TorBootstrapStatus
+#ifdef __cplusplus
+  : int32_t
+#endif // __cplusplus
+ {
+  /**
+   * The client bootstrapped.
+   */
+  TorBootstrapStatus_Ok = 0,
+  /**
+   * [`tor_client_cancel_bootstrap`] was called on the handle.
+   */
+  TorBootstrapStatus_Cancelled = 1,
+  /**
+   * The deadline passed before bootstrap finished.
+   */
+  TorBootstrapStatus_TimedOut = 2,
+  /**
+   * Arti reported an error.
+   */
+  TorBootstrapStatus_Failed = 3,
+  /**
+   * The client handle was null.
+   */
+  TorBootstrapStatus_NullClient = 4,
+};
+#ifndef __cplusplus
+typedef int32_t TorBootstrapStatus;
+#endif // __cplusplus
+
 typedef struct Tor {
   void *client;
   void *proxy;
   uint16_t port;
 } Tor;
 
+#ifdef __cplusplus
+extern "C" {
+#endif // __cplusplus
+
 /**
- * Start a bootstrapped Tor client and a localhost SOCKS proxy.
+ * Create a Tor client and a localhost SOCKS proxy.
  *
  * # Safety
  * `state_dir` and `cache_dir` must point to valid, NUL-terminated strings
@@ -20,19 +60,36 @@ typedef struct Tor {
 struct Tor tor_start(uint16_t socks_port, const char *state_dir, const char *cache_dir);
 
 /**
- * Ensure the client has bootstrapped.
+ * Bootstrap the client, returning on cancellation or after `timeout_millis`.
+ * A null `client` returns `NullClient`.
  *
  * # Safety
- * `client` must be a live, non-null handle returned by [`tor_start`].
+ * `client` must be null or a live handle returned by [`tor_start`].
  * It must not be freed while this call is in progress.
  */
-bool tor_client_bootstrap(void *client);
+TorBootstrapStatus tor_client_bootstrap(void *client, uint64_t timeout_millis);
 
 /**
- * Change the client's dormant mode.
+ * Ask an in-progress bootstrap to return promptly. Null is accepted.
+ *
+ * Cancellation is sticky: once this is called, every later
+ * [`tor_client_bootstrap`] on the same handle returns `Cancelled` at once.
+ * To bootstrap again, free the handle with [`tor_client_free`] and create a
+ * new one with [`tor_start`].
  *
  * # Safety
- * `client` must be a live, non-null handle returned by [`tor_start`].
+ * `client` must be null or a live handle returned by [`tor_start`]. It may be
+ * called concurrently with [`tor_client_bootstrap`], but not with or after
+ * [`tor_client_free`].
+ */
+void tor_client_cancel_bootstrap(void *client);
+
+/**
+ * Change the client's dormant mode. A null `client` is ignored and sets the
+ * message returned by [`tor_last_error_message`].
+ *
+ * # Safety
+ * `client` must be null or a live handle returned by [`tor_start`].
  * It must not be freed while this call is in progress.
  */
 void tor_client_set_dormant(void *client, bool soft_mode);
@@ -40,22 +97,40 @@ void tor_client_set_dormant(void *client, bool soft_mode);
 /**
  * Release the client handle returned by [`tor_start`].
  *
- * The handle must not be used after this call. The proxy task keeps its own
- * reference to the underlying client, so stopping the proxy and freeing the
- * handle can happen in either order.
+ * This shuts down the client's background tasks and closes its state and
+ * cache files, which can block for a few seconds. Stop the proxy first: it
+ * keeps its own reference to the client, but cannot serve connections once
+ * the client is freed.
  *
  * # Safety
  * `client` must be null or a live handle returned by [`tor_start`].
  * No other call may use the handle concurrently with or after this call.
+ * It must not be called from within an async runtime.
  */
 void tor_client_free(void *client);
 
 /**
- * Stop the proxy and release its handle. Null is accepted.
+ * Start accepting SOCKS connections on the listeners reserved by [`tor_start`].
+ * Repeated calls are harmless.
+ *
+ * # Safety
+ * `proxy` must be a live, non-null proxy handle returned by [`tor_start`]. It
+ * must not be used concurrently or after [`tor_proxy_stop`].
+ */
+bool tor_proxy_start(void *proxy);
+
+/**
+ * Stop the proxy, or release its reserved listeners if it was not started.
+ * Null is accepted.
+ *
+ * This waits for the accept loop to exit, so the listeners and the loop's
+ * reference to the client are released by the time it returns. Call it
+ * before [`tor_client_free`].
  *
  * # Safety
  * `proxy` must be null or a live proxy handle returned by [`tor_start`].
  * A non-null handle must be passed to this function only once.
+ * It must not be called from within an async runtime.
  */
 void tor_proxy_stop(void *proxy);
 
@@ -100,3 +175,7 @@ uint64_t tor_get_nofile_limit(void);
  * This function has no additional safety requirements.
  */
 uint64_t tor_set_nofile_limit(uint64_t limit);
+
+#ifdef __cplusplus
+} // extern "C"
+#endif // __cplusplus

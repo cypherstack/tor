@@ -59,6 +59,56 @@ void main() {
     );
   });
 
+  group('native bootstrap status', () {
+    const native = TorNative();
+    Directory? dir;
+    TorHandles? handles;
+
+    setUp(() async {
+      dir = null;
+      handles = null;
+      dir = await Directory.systemTemp.createTemp('tor-bootstrap-status-');
+      // Creating the client does not touch the network.
+      handles = await native.start(
+        0,
+        '${dir!.path}/state',
+        '${dir!.path}/cache',
+      );
+    });
+
+    tearDown(() async {
+      final createdHandles = handles;
+      if (createdHandles != null) {
+        await native.stopProxy(createdHandles.proxy);
+        await native.freeClient(createdHandles.client);
+      }
+      final createdDir = dir;
+      if (createdDir != null) {
+        await createdDir.delete(recursive: true);
+      }
+    });
+
+    test('a passed deadline throws TorBootstrapTimeout', () async {
+      const timeout = Duration(milliseconds: 1);
+      await expectLater(
+        native.bootstrap(handles!.client, timeout),
+        throwsA(
+          isA<TorBootstrapTimeout>()
+              .having((e) => e.timeout, 'timeout', timeout)
+              .having((e) => e.message, 'message', contains('timed out')),
+        ),
+      );
+    });
+
+    test('a cancelled bootstrap throws TorStartCancelled', () async {
+      native.cancelBootstrap(handles!.client);
+      await expectLater(
+        native.bootstrap(handles!.client, const Duration(minutes: 1)),
+        throwsA(isA<TorStartCancelled>()),
+      );
+    });
+  });
+
   test(
     'stop resets state and allows a fresh start',
     () async {

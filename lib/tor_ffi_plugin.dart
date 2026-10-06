@@ -18,6 +18,27 @@ class CouldntBootstrapDirectory implements Exception {
   CouldntBootstrapDirectory({this.rustError});
 }
 
+class TorStartCancelled implements Exception {
+  const TorStartCancelled();
+
+  @override
+  String toString() => 'Tor start was cancelled';
+}
+
+/// Bootstrap did not finish within the deadline passed to [Tor.start].
+class TorBootstrapTimeout implements Exception {
+  const TorBootstrapTimeout(this.timeout, this.message);
+
+  /// The deadline that passed.
+  final Duration timeout;
+
+  /// The native error message.
+  final String message;
+
+  @override
+  String toString() => 'TorBootstrapTimeout: $message';
+}
+
 enum TorStatus { on, starting, off }
 
 /// Native handles produced by a successful [TorNative.start].
@@ -70,17 +91,64 @@ class TorNative {
     }
   }
 
-  /// Bootstrap [client]. Throws the Rust error on failure.
-  void bootstrap(Pointer<Void> client) {
-    if (!bindings.tor_client_bootstrap(client)) {
-      Tor.throwRustException();
+  /// Bootstrap [client] in a worker isolate. Throws [TorStartCancelled] on
+  /// cancellation, [TorBootstrapTimeout] when [timeout] elapses, and the Rust
+  /// error on failure.
+  Future<void> bootstrap(Pointer<Void> client, Duration timeout) async {
+    final timeoutMillis = timeout.inMilliseconds;
+    await Isolate.run(() => _bootstrapInIsolate(client.address, timeoutMillis));
+  }
+
+  static void _bootstrapInIsolate(int client, int timeoutMillis) {
+    final code = bindings.tor_client_bootstrap(
+      Pointer<Void>.fromAddress(client),
+      timeoutMillis,
+    );
+    switch (bindings.TorBootstrapStatus.fromValue(code)) {
+      case bindings.TorBootstrapStatus.Ok:
+        return;
+      case bindings.TorBootstrapStatus.Cancelled:
+        Tor._takeRustError();
+        throw const TorStartCancelled();
+      case bindings.TorBootstrapStatus.TimedOut:
+        throw TorBootstrapTimeout(
+          Duration(milliseconds: timeoutMillis),
+          Tor._takeRustError(),
+        );
+      case bindings.TorBootstrapStatus.Failed:
+        Tor.throwRustException();
+      case bindings.TorBootstrapStatus.NullClient:
+        throw ArgumentError(Tor._takeRustError());
     }
   }
+
+  /// Interrupt an in-progress [bootstrap].
+  void cancelBootstrap(Pointer<Void> client) =>
+      bindings.tor_client_cancel_bootstrap(client);
 
   void setDormant(Pointer<Void> client, bool softMode) =>
       bindings.tor_client_set_dormant(client, softMode);
 
-  void stopProxy(Pointer<Void> proxy) => bindings.tor_proxy_stop(proxy);
+  void startProxy(Pointer<Void> proxy) {
+    if (!bindings.tor_proxy_start(proxy)) {
+      Tor.throwRustException();
+    }
+  }
+
+  /// Stop [proxy] in a worker isolate. The native call waits for the accept
+  /// loop to exit, so its listeners and client reference are released when
+  /// this completes.
+  Future<void> stopProxy(Pointer<Void> proxy) async {
+    if (proxy == nullptr) {
+      return;
+    }
+
+    final address = proxy.address;
+    await Isolate.run(() => _stopProxyInIsolate(address));
+  }
+
+  static void _stopProxyInIsolate(int proxy) =>
+      bindings.tor_proxy_stop(Pointer<Void>.fromAddress(proxy));
 
   /// Release [client] in a worker isolate, since tearing down Tor can block
   /// for a few seconds.
@@ -114,7 +182,9 @@ class Tor {
   /// Singleton instance of the Tor class.
   static final Tor instance = Tor._();
 
-  /// Status of the tor proxy service
+  /// The lifecycle state of the Tor service.
+  ///
+  /// This does not monitor SOCKS accept-loop liveness after startup.
   TorStatus get status => _status;
   TorStatus _status = TorStatus.off;
 
@@ -127,7 +197,7 @@ class Tor {
   /// This is the port that should be used for all requests.
   int get port {
     if (_proxyPort == null || _status == TorStatus.off) {
-      throw Exception("Tor proxy port is unexpectedly null");
+      throw Exception('Tor proxy is not running');
     }
     return _proxyPort!;
   }
@@ -144,100 +214,216 @@ class Tor {
   ///
   /// Returns a Future that completes when the Tor service has started.
   ///
-  /// [start] and [stop] run one at a time, in the order they were called.
-  /// Calling [start] while an earlier start is still pending returns that
-  /// start's future, so every caller sees the same success or failure.
-  Future<void> start({required String torDataDirPath}) {
-    final pending = _pendingStart;
-    if (pending != null) {
-      return pending;
+  /// [start] and [stop] run one at a time, in the order they were called, so
+  /// a start issued after [stop] restarts Tor once that stop has finished.
+  /// Concurrent starts with the same raw data directory and timeout share
+  /// one attempt and see the same success or failure. Other starts queue
+  /// behind it and reuse the running instance, or fail with a [StateError]
+  /// for a different data directory, leaving that instance running.
+  ///
+  /// [torDataDirPath] is created and resolved asynchronously inside the queued
+  /// start. Physical paths are compared with the running instance, so symbolic
+  /// links and trailing separators can reuse it. A path that cannot be created
+  /// or resolved fails with the file system error.
+  Future<void> start({
+    required String torDataDirPath,
+    Duration bootstrapTimeout = const Duration(minutes: 2),
+  }) {
+    // The native deadline has millisecond resolution.
+    if (bootstrapTimeout.inMilliseconds <= 0) {
+      return Future<void>.error(
+        ArgumentError.value(
+          bootstrapTimeout,
+          'bootstrapTimeout',
+          'must be at least one millisecond',
+        ),
+      );
     }
 
-    late final Future<void> attempt;
-    attempt = _enqueue(() => _start(torDataDirPath)).whenComplete(() {
-      if (identical(_pendingStart, attempt)) {
-        _pendingStart = null;
+    for (final pending in _pendingStarts) {
+      if (pending.dataDirPath == torDataDirPath &&
+          pending.bootstrapTimeout == bootstrapTimeout) {
+        return pending.future;
       }
+    }
+
+    // Always queue, even when Tor looks running: a stop may be queued ahead of
+    // this start, in which case the start must restart Tor rather than return
+    // early and leave it off.
+    final operation = _StartOperation(torDataDirPath, bootstrapTimeout);
+    // _start runs later, so report starting now. A start cancelled before it
+    // runs is reset to off by the stop that cancelled it.
+    if (_status == TorStatus.off) {
+      _status = TorStatus.starting;
+    }
+    operation.future = _enqueue(() => _start(operation)).whenComplete(() {
+      _pendingStarts.remove(operation);
     });
-    return _pendingStart = attempt;
+    _pendingStarts.add(operation);
+    return operation.future;
   }
 
-  /// The start that later [start] calls join, until a [stop] is requested.
-  Future<void>? _pendingStart;
+  /// Queued starts that later calls can join until a [stop] is requested.
+  final _pendingStarts = <_StartOperation>[];
 
-  Future<void> _start(String torDataDirPath) async {
-    if (_status == TorStatus.on) {
-      return;
+  String? _activeDataDirPath;
+
+  // Retained handles need teardown, even if status still reports on.
+  bool _releasePending = false;
+
+  /// The last cleanup failure observed while preserving an earlier start
+  /// failure. This is cleared at the beginning of each start attempt.
+  Object? get lastCleanupError => _lastCleanupError;
+
+  /// Stack trace associated with [lastCleanupError].
+  StackTrace? get lastCleanupStackTrace => _lastCleanupStackTrace;
+
+  Object? _lastCleanupError;
+  StackTrace? _lastCleanupStackTrace;
+
+  Future<void> _start(_StartOperation operation) async {
+    if (operation.cancelRequested) {
+      // A stop was requested after this start was queued and runs next.
+      throw const TorStartCancelled();
     }
 
+    final wasRunning = _status == TorStatus.on;
+    if (!wasRunning) {
+      _status = TorStatus.starting;
+    }
+    final String dataDirPath;
     try {
+      final directory = await Directory(operation.dataDirPath).absolute
+          .create(recursive: true);
+      dataDirPath = await directory.resolveSymbolicLinks();
+    } catch (_) {
+      if (!wasRunning && !_releasePending) {
+        _status = TorStatus.off;
+      }
+      rethrow;
+    }
+
+    if (_status == TorStatus.on && !_releasePending) {
+      if (_activeDataDirPath == dataDirPath) {
+        return;
+      }
+      throw StateError(
+        'Tor is already running with a different data directory.',
+      );
+    }
+
+    _lastCleanupError = null;
+    _lastCleanupStackTrace = null;
+    try {
+      if (_proxyPtr != nullptr || _clientPtr != nullptr) {
+        await _stop();
+      }
       _status = TorStatus.starting;
 
       // Set the state and cache directories.
-      final stateDir = await Directory('$torDataDirPath/tor_state').create();
-      final cacheDir = await Directory('$torDataDirPath/tor_cache').create();
+      final stateDir = await Directory('$dataDirPath/tor_state').create();
+      final cacheDir = await Directory('$dataDirPath/tor_cache').create();
+
+      if (operation.cancelRequested) {
+        throw const TorStartCancelled();
+      }
 
       // Let the OS allocate the port while Rust binds the real listeners. This
       // avoids a probe-then-bind race and keeps the published port reserved.
       final tor = await _native.start(0, stateDir.path, cacheDir.path);
 
-      // Set the client pointer and started flag.
+      // Retain the native handles before bootstrap so stop can cancel it.
       _clientPtr = tor.client;
       _proxyPtr = tor.proxy;
+      operation.client = tor.client;
+
+      if (operation.cancelRequested) {
+        throw const TorStartCancelled();
+      }
 
       // Bootstrap the Tor service.
-      _bootstrap();
+      await _native.bootstrap(tor.client, operation.bootstrapTimeout);
+
+      if (operation.cancelRequested) {
+        throw const TorStartCancelled();
+      }
+
+      _native.startProxy(tor.proxy);
 
       // Set the proxy port and change status.
       _proxyPort = tor.port;
+      _activeDataDirPath = dataDirPath;
       _status = TorStatus.on;
-    } catch (_) {
+    } catch (error, stackTrace) {
       // Release anything the native start produced before bootstrap failed;
       // the next start would otherwise overwrite these handles.
-      await _stop();
-      rethrow;
+      operation.client = nullptr;
+      try {
+        await _stop();
+      } catch (cleanupError, cleanupStackTrace) {
+        _lastCleanupError = cleanupError;
+        _lastCleanupStackTrace = cleanupStackTrace;
+        try {
+          // Also expose secondary failures in normal application logs. A
+          // custom zone's print handler must not mask the bootstrap error.
+          // ignore: avoid_print
+          print(
+            'Tor cleanup failed after start failed: $cleanupError\n$cleanupStackTrace',
+          );
+        } catch (_) {
+          // Preserve the original start exception even if logging fails.
+        }
+      }
+      Error.throwWithStackTrace(error, stackTrace);
     }
   }
-
-  /// Bootstrap the Tor service.
-  ///
-  /// This will bootstrap the Tor service and establish a Tor circuit.  This
-  /// function should only be called after the Tor service has been started.
-  ///
-  /// This function will block until the Tor service has bootstrapped.
-  ///
-  /// Throws an exception if the Tor service fails to bootstrap.
-  ///
-  /// Returns void.
-  void _bootstrap() => _native.bootstrap(_clientPtr);
 
   /// Prevent traffic flowing through the proxy.
   ///
   /// This is the same as [stop]: the SOCKS proxy is shut down and the native
-  /// client released.
+  /// client released. Await the returned future and handle release failures,
+  /// including when calling from a synchronous dispose method.
   Future<void> disable() => stop();
 
   /// Stop the proxy and release the native client handle.
   ///
-  /// If a [start] is still in progress, this waits for it to finish and then
-  /// tears down what it started, so no Tor instance outlives the call.
+  /// Cancels an in-progress [start], which throws [TorStartCancelled], then
+  /// releases its handles. A running instance stays [TorStatus.on] until its
+  /// native resources have been released, including when release fails and
+  /// needs retry. A failed start stays [TorStatus.starting] if cleanup fails.
+  /// Await a successful [stop] before deleting the data directory.
   Future<void> stop() {
-    // A start requested after this stop must not join the earlier attempt.
-    _pendingStart = null;
+    for (final pending in _pendingStarts) {
+      pending.cancelRequested = true;
+      if (pending.client != nullptr) {
+        _native.cancelBootstrap(pending.client);
+      }
+    }
+    _pendingStarts.clear();
     return _enqueue(_stop);
   }
 
   Future<void> _stop() async {
-    _native.stopProxy(_proxyPtr);
-    _proxyPtr = nullptr;
-
-    final client = _clientPtr;
-    _clientPtr = nullptr;
-
+    // Retry retained handles on the next start or stop. Never shut down the
+    // client's runtime while its proxy may still be accepting connections.
+    _releasePending = true;
     _proxyPort = null;
-    _status = TorStatus.off;
-
-    await _native.freeClient(client);
+    _activeDataDirPath = null;
+    try {
+      if (_proxyPtr != nullptr) {
+        await _native.stopProxy(_proxyPtr);
+        _proxyPtr = nullptr;
+      }
+      if (_clientPtr != nullptr) {
+        await _native.freeClient(_clientPtr);
+        _clientPtr = nullptr;
+      }
+    } finally {
+      _releasePending = _proxyPtr != nullptr || _clientPtr != nullptr;
+      if (!_releasePending) {
+        _status = TorStatus.off;
+      }
+    }
   }
 
   /// Tail of the queue that runs [start] and [stop] one at a time.
@@ -251,7 +437,7 @@ class Tor {
   }
 
   Future<void> setClientDormant(bool dormant) async {
-    if (_clientPtr == nullptr || status == TorStatus.off) {
+    if (_releasePending || _clientPtr == nullptr || status == TorStatus.off) {
       throw ClientNotActive();
     }
 
@@ -267,16 +453,18 @@ class Tor {
   //   // if (enabled && started && circuitEstablished) {}
   // }
 
-  static void throwRustException() {
+  static Never throwRustException() {
+    throw _getRustException(_takeRustError());
+  }
+
+  /// The calling thread's last Rust error message, which this clears.
+  static String _takeRustError() {
     final message = bindings.tor_last_error_message();
-    final String rustError;
     try {
-      rustError = message.cast<Utf8>().toDartString();
+      return message.cast<Utf8>().toDartString();
     } finally {
       bindings.tor_string_free(message);
     }
-
-    throw _getRustException(rustError);
   }
 
   static Exception _getRustException(String rustError) {
@@ -287,9 +475,17 @@ class Tor {
     }
   }
 
-  void hello() {
-    _native.hello();
-  }
+  void hello() => _native.hello();
 }
 
 class ClientNotActive implements Exception {}
+
+class _StartOperation {
+  _StartOperation(this.dataDirPath, this.bootstrapTimeout);
+
+  final String dataDirPath;
+  final Duration bootstrapTimeout;
+  late final Future<void> future;
+  bool cancelRequested = false;
+  Pointer<Void> client = nullptr;
+}
