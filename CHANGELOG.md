@@ -15,6 +15,9 @@
   `Tor.start`, instead of leaving the proxy running.
 * `Tor.disable` now stops the proxy like `Tor.stop`; before, it only changed
   the reported status while traffic kept flowing. It returns a `Future`.
+* Fix SOCKS port selection giving up after one failed bind and sometimes
+  picking port 0 or a privileged port. It now retries up to 32 ports in
+  1024–65535.
 
 ## 0.1.0
 

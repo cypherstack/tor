@@ -155,7 +155,7 @@ class Tor {
       final cacheDir = await Directory('$torDataDirPath/tor_cache').create();
 
       // Generate a random port.
-      final int? newPort = await _getRandomUnusedPort();
+      final int? newPort = await pickUnusedPort();
 
       if (newPort == null) {
         throw Exception("Failed to get random unused port!");
@@ -242,19 +242,24 @@ class Tor {
   Pointer<Void> _clientPtr = nullptr;
   Pointer<Void> _proxyPtr = nullptr;
 
-  Future<int?> _getRandomUnusedPort({List<int> excluded = const []}) async {
-    var random = Random.secure();
-    int potentialPort = 0;
-
-    retry:
-    while (potentialPort <= 0 || excluded.contains(potentialPort)) {
-      potentialPort = random.nextInt(65535);
+  /// Pick a random port that can currently be bound, trying up to [attempts]
+  /// candidates. Ports below 1024 are skipped because unprivileged processes
+  /// cannot bind them on Linux and Android.
+  @visibleForTesting
+  static Future<int?> pickUnusedPort({
+    Random? random,
+    int attempts = 32,
+  }) async {
+    random ??= Random.secure();
+    const firstPort = 1024;
+    for (var attempt = 0; attempt < attempts; attempt++) {
+      final port = firstPort + random.nextInt(65536 - firstPort);
       try {
-        var socket = await ServerSocket.bind("0.0.0.0", potentialPort);
-        socket.close();
-        return potentialPort;
+        final socket = await ServerSocket.bind("0.0.0.0", port);
+        await socket.close();
+        return port;
       } catch (_) {
-        continue retry;
+        // Taken or not bindable; try another.
       }
     }
 
