@@ -12,6 +12,7 @@ class FakeTorNative implements TorNative {
   final liveClients = <int>{};
   final liveProxies = <int>{};
   int maxLiveClients = 0;
+  bool failBootstrap = false;
   int _nextAddress = 0x1000;
 
   /// Wait until [count] native starts have been requested.
@@ -41,7 +42,11 @@ class FakeTorNative implements TorNative {
   }
 
   @override
-  void bootstrap(Pointer<Void> client) {}
+  void bootstrap(Pointer<Void> client) {
+    if (failBootstrap) {
+      throw Exception('bootstrap failed');
+    }
+  }
 
   @override
   void setDormant(Pointer<Void> client, bool softMode) {}
@@ -110,6 +115,18 @@ void main() {
     expect(tor.status, TorStatus.off);
     expect(native.pendingStarts, hasLength(1));
   }, timeout: const Timeout(Duration(seconds: 10)));
+
+  test('a failed bootstrap releases the native handles', () async {
+    native.failBootstrap = true;
+    final started = tor.start(torDataDirPath: dataDir.path);
+    await native.waitForStarts(1);
+    native.pendingStarts[0].complete();
+
+    await expectLater(started, throwsException);
+    expect(tor.status, TorStatus.off);
+    expect(native.liveClients, isEmpty);
+    expect(native.liveProxies, isEmpty);
+  });
 
   test('restart during a pending start never overlaps instances', () async {
     final first = tor.start(torDataDirPath: dataDir.path);

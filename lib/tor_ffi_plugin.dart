@@ -175,7 +175,9 @@ class Tor {
       _proxyPort = newPort;
       _status = TorStatus.on;
     } catch (_) {
-      _status = TorStatus.off;
+      // Release anything the native start produced before bootstrap failed;
+      // the next start would otherwise overwrite these handles.
+      _stop();
       rethrow;
     }
   }

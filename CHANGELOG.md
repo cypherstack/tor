@@ -11,6 +11,8 @@
   `start` is in progress waits for it and then tears it down.
 * Concurrent `Tor.start` calls share one attempt and complete only when Tor is
   ready, or fail together with the same error.
+* Release the native client and proxy when bootstrap fails during
+  `Tor.start`, instead of leaving the proxy running.
 
 ## 0.1.0
 
