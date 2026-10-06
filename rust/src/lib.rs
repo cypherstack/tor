@@ -334,6 +334,17 @@ mod tests {
     }
 
     #[test]
+    fn error_message_drops_interior_nul() {
+        update_last_error(io::Error::other("bo\0om"));
+
+        unsafe {
+            let message = tor_last_error_message();
+            assert_eq!(CStr::from_ptr(message).to_str().unwrap(), "boom");
+            tor_string_free(message as *mut c_char);
+        }
+    }
+
+    #[test]
     fn client_free_ignores_null() {
         unsafe { tor_client_free(ptr::null_mut()) };
     }

@@ -21,6 +21,7 @@
 * Free the state and cache directory strings passed to `tor_start`.
 * Add `tor_string_free` and use it to release Rust error messages after
   Dart copies them.
+* Strip NUL bytes from Rust error messages instead of panicking across FFI.
 
 ## 0.1.0
 
