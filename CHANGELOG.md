@@ -1,5 +1,11 @@
 ## 0.2.0
 
+* Update the example to socks_socket 2.0.0, await Tor shutdown, and show start
+  and stop exception text so failures allow a retry. Keep Stop available after
+  a failed release and clear errors after success. Ignore asynchronous state
+  updates after the widget is disposed. Await SOCKS request writes so async
+  write failures reach the example's connection error handler.
+
 * Bump arti to 2.7.0 and its supporting crates to 0.47.0; needs Rust 1.92.
 * Rebase the Windows clock-resolution fix onto `saturating-time` 0.5.0;
   the upstream release still hangs while computing `SystemTime` limits.

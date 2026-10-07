@@ -24,7 +24,10 @@ class MyApp extends StatelessWidget {
 }
 
 class Home extends StatefulWidget {
-  const Home({super.key});
+  const Home({super.key, this.tor, this.moneroSocketFactory});
+
+  final Tor? tor;
+  final Future<SOCKSSocket> Function(int proxyPort)? moneroSocketFactory;
 
   @override
   State<Home> createState() => _MyAppState();
@@ -33,6 +36,10 @@ class Home extends StatefulWidget {
 class _MyAppState extends State<Home> {
   // Flag to track if tor has started.
   bool torIsRunning = false;
+  String? torError;
+  bool _torStopFailed = false;
+
+  Tor get _tor => widget.tor ?? Tor.instance;
 
   // Set the default text for the host input field.
   final hostController = TextEditingController(text: 'https://icanhazip.com/');
@@ -68,21 +75,7 @@ class _MyAppState extends State<Home> {
   @override
   void initState() {
     super.initState();
-    unawaited(init());
-  }
-
-  Future<void> init() async {
-    // Start the Tor daemon.
-    await Tor.instance.start(
-      torDataDirPath: (await getApplicationSupportDirectory()).path,
-    );
-
-    // Toggle started flag.
-    setState(() {
-      torIsRunning = Tor.instance.status == TorStatus.on; // Update flag
-    });
-
-    debugPrint('Done awaiting; tor should be running');
+    unawaited(startTor());
   }
 
   @override
@@ -94,17 +87,47 @@ class _MyAppState extends State<Home> {
   }
 
   Future<void> startTor() async {
-    // Start the Tor daemon.
-    await Tor.instance.start(
-      torDataDirPath: (await getApplicationSupportDirectory()).path,
-    );
+    try {
+      // Start the Tor daemon.
+      await _tor.start(
+        torDataDirPath: (await getApplicationSupportDirectory()).path,
+      );
 
-    // Toggle started flag.
-    setState(() {
-      torIsRunning = Tor.instance.status == TorStatus.on; // Update flag
-    });
+      if (!mounted) return;
+      setState(() {
+        torIsRunning = _tor.status == TorStatus.on;
+        torError = null;
+        _torStopFailed = false;
+      });
+      debugPrint('Done awaiting; tor should be running');
+    } catch (error) {
+      debugPrint('Unable to start Tor: $error');
+      if (!mounted) return;
+      setState(() {
+        torIsRunning = false;
+        torError = 'Unable to start Tor: $error';
+      });
+    }
+  }
 
-    debugPrint('Done awaiting; tor should be running');
+  Future<void> stopTor() async {
+    try {
+      await _tor.disable();
+      if (!mounted) return;
+      setState(() {
+        torIsRunning = false;
+        torError = null;
+        _torStopFailed = false;
+      });
+    } catch (error) {
+      debugPrint('Unable to stop Tor: $error');
+      if (!mounted) return;
+      setState(() {
+        torIsRunning = false;
+        torError = 'Unable to stop Tor: $error';
+        _torStopFailed = true;
+      });
+    }
   }
 
   Future<void> testMoneroOnionNodeConnection() async {
@@ -128,11 +151,13 @@ class _MyAppState extends State<Home> {
           .split("/")
           .last; // Extract the path
 
-      var socksSocket = await SOCKSSocket.create(
-        proxyHost: InternetAddress.loopbackIPv4.address,
-        proxyPort: Tor.instance.port,
-        sslEnabled: false,
-      );
+      var socksSocket =
+          await (widget.moneroSocketFactory?.call(_tor.port) ??
+              SOCKSSocket.create(
+                proxyHost: InternetAddress.loopbackIPv4.address,
+                proxyPort: _tor.port,
+                sslEnabled: false,
+              ));
 
       await socksSocket.connect();
       await socksSocket.connectTo(host, port);
@@ -151,7 +176,7 @@ class _MyAppState extends State<Home> {
           '\r\n'
           '$body';
 
-      socksSocket.write(request);
+      await socksSocket.write(request);
       debugPrint("Request sent: $request");
 
       await for (var response in socksSocket.inputStream) {
@@ -214,19 +239,12 @@ class _MyAppState extends State<Home> {
                     child: const Text("Start tor"),
                   ),
                   TextButton(
-                    onPressed: !torIsRunning
-                        ? null
-                        : () async {
-                            Tor.instance.disable();
-                            await Tor.instance.stop();
-                            setState(() {
-                              torIsRunning = false;
-                            });
-                          },
+                    onPressed: torIsRunning || _torStopFailed ? stopTor : null,
                     child: const Text("Stop tor"),
                   ),
                 ],
               ),
+              if (torError != null) Text(torError!),
               Row(
                 children: [
                   // Host input field.
@@ -254,7 +272,7 @@ class _MyAppState extends State<Home> {
                             SocksTCPClient.assignToHttpClient(client, [
                               ProxySettings(
                                 InternetAddress.loopbackIPv4,
-                                Tor.instance.port,
+                                _tor.port,
                                 password: null,
                               ), // TODO get from tor's config file.
                             ]);
@@ -291,7 +309,7 @@ class _MyAppState extends State<Home> {
                         // Instantiate a socks socket at localhost and on the port selected by the tor service.
                         var socksSocket = await SOCKSSocket.create(
                           proxyHost: InternetAddress.loopbackIPv4.address,
-                          proxyPort: Tor.instance.port,
+                          proxyPort: _tor.port,
                           sslEnabled: true, // For SSL connections.
                         );
 
@@ -379,7 +397,7 @@ class _MyAppState extends State<Home> {
                             // Instantiate a socks socket at localhost and on the port selected by the tor service.
                             var socksSocket = await SOCKSSocket.create(
                               proxyHost: InternetAddress.loopbackIPv4.address,
-                              proxyPort: Tor.instance.port,
+                              proxyPort: _tor.port,
                               sslEnabled: !domain.endsWith(
                                 ".onion",
                               ), // For SSL connections.
