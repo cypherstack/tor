@@ -1,6 +1,8 @@
 ## 0.2.0
 
-* Bump arti to 2.6.0; needs Rust 1.91.
+* Bump arti to 2.7.0 and its supporting crates to 0.47.0; needs Rust 1.92.
+* Rebase the Windows clock-resolution fix onto `saturating-time` 0.5.0;
+  the upstream release still hangs while computing `SystemTime` limits.
 * Include the vendored crates in `rust/patches/` in the prebuilt source
   fingerprint, so editing them invalidates prebuilts and the hook cache.
 * Leave Cargo output from building a vendored crate on its own (`target/` and
@@ -99,6 +101,7 @@
   status to `off` if no native handles remain.
 * Route `Tor.hello` through the injectable native layer so test instances
   can substitute the greeting without calling the real library.
+* Drop the unused `tor-config` dependency.
 * Skip hidden files such as `.DS_Store` in the native source fingerprint and
   hash sources as bytes, so stray files no longer fail or invalidate builds.
 * Avoid hashing all Rust inputs during source builds; full fingerprints remain
