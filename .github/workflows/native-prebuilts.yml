@@ -190,6 +190,12 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential clang cmake libgtk-3-dev liblzma-dev ninja-build pkg-config perl
+      - name: Install Android Java
+        if: matrix.platform == 'android'
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: '17'
       - name: Install Android NDK
         if: matrix.platform == 'android'
         run: |
