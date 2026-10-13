@@ -129,7 +129,7 @@ fn find_min<T: SaturatingTime + PartialEq>() -> T {
 ///     3. Else, set `step` to `MAX{1ns, step / 2}` and continue.
 ///
 /// Steps below the platform clock resolution can leave `res` unchanged.
-/// Treat those steps as overflow so the search terminates on Windows.
+/// Treat those steps as overflow so the search terminates.
 fn find_limit<T, F>(f: F) -> T
 where
     T: SaturatingTime + PartialEq,
@@ -188,15 +188,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn limit_search_handles_clock_resolution_below_one_nanosecond_precision() {
+    fn limit_search_handles_coarse_clock_resolution() {
         let calls = std::cell::Cell::new(0);
         let minimum = find_limit::<SystemTime, _>(|time, step| {
             calls.set(calls.get() + 1);
             assert!(calls.get() < 1000, "limit search stopped making progress");
-            // Model Windows SystemTime's 100ns resolution on every platform.
+            // Model a 100ns SystemTime resolution on every platform.
             let rounded = Duration::new(step.as_secs(), step.subsec_nanos() / 100 * 100);
             time.checked_sub(rounded)
         });
+
         assert!(minimum < SystemTime::UNIX_EPOCH);
         assert!(minimum.checked_sub(Duration::from_nanos(100)).is_none());
     }

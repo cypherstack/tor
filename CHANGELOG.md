@@ -7,12 +7,10 @@
   write failures reach the example's connection error handler.
 
 * Bump arti to 2.7.0 and its supporting crates to 0.47.0; needs Rust 1.92.
-* Rebase the Windows clock-resolution fix onto `saturating-time` 0.5.0;
-  the upstream release still hangs while computing `SystemTime` limits.
-* Include the vendored crates in `rust/patches/` in the prebuilt source
-  fingerprint, so editing them invalidates prebuilts and the hook cache.
-* Leave Cargo output from building a vendored crate on its own (`target/` and
-  `Cargo.lock`) out of the native source fingerprint.
+* Vendor a reviewed `saturating-time` 0.5.0 fork under `rust/patches/`, with
+  regression coverage for coarse platform clocks. Source builds fetch only
+  from crates.io, and the prebuilt source fingerprint covers the patch but
+  not Cargo output left by building it on its own.
 * Fix `tor_client_bootstrap` and `tor_client_set_dormant` freeing the client
   handle Dart still holds. Add `tor_client_free`; `Tor.stop` now releases the
   client handle.
