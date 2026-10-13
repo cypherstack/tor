@@ -11,7 +11,7 @@ keywords = ["time", "system-time", "instant", "saturating"]
 categories = ["date-and-time", "os", "rust-patterns"]
 
 [dependencies]
-web-time-compat = { version = "0.3.0", path = "../web-time-compat" }
+web-time-compat = "0.3.0"
 
 [features]
 full = ["web-time-compat/full"]
