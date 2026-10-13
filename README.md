@@ -102,7 +102,9 @@ Prebuilts use dynamic linking without sanitizers and cover:
 Push a new `native-*` tag (for example `native-0.1.0-1`) to build and publish
 all targets. Release notes contain the hook settings above with the actual pin.
 Existing releases are not overwritten. Manual workflow runs on branches only
-upload artifacts. To generate the manifest locally, put the target-named
+upload artifacts. Pull requests run Rust/Dart tests, Windows time/IPv6/file-release
+tests, and example packaging checks; the full cross-build matrix runs for tags
+and manual dispatches. To generate the manifest locally, put the target-named
 libraries in `artifacts/`, run `flutter pub get`, then:
 
 ```sh
