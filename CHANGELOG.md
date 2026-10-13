@@ -110,6 +110,8 @@
   hash sources as bytes, so stray files no longer fail or invalidate builds.
 * Avoid hashing all Rust inputs during source builds; full fingerprints remain
   required when selecting prebuilts.
+* Validate packaged macOS framework loading and audit Rust dependencies in CI
+  without granting write access to the workflow token.
 
 ## 0.1.0
 
