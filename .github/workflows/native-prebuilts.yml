@@ -36,7 +36,6 @@ jobs:
         with:
           flutter-version: '3.47.2'
           channel: stable
-          cache: true
       - name: Verify Rust
         run: |
           cargo fmt --manifest-path rust/Cargo.toml --check
@@ -214,7 +213,6 @@ jobs:
         with:
           flutter-version: '3.47.2'
           channel: stable
-          cache: true
       - name: Build packaged example
         working-directory: example
         run: |
@@ -257,7 +255,6 @@ jobs:
         with:
           flutter-version: '3.47.2'
           channel: stable
-          cache: true
       - run: flutter pub get
       - name: Generate manifest
         run: dart --packages=.dart_tool/package_config.json tool/prebuilt_manifest.dart artifacts
