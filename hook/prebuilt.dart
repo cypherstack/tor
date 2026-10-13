@@ -42,9 +42,11 @@ Future<List<Uri>> sourceDependencies(Uri root) async => <Uri>[
     'hook/build.dart',
     'lib/tor_ffi_plugin_bindings_generated.dart',
     'rust/src/',
+    'rust/patches/',
   ])
     root.resolve(path),
   ...await _sourceEntries(Directory.fromUri(root.resolve('rust/src/'))),
+  ...await _sourceEntries(Directory.fromUri(root.resolve('rust/patches/'))),
 ]..sort((a, b) => a.path.compareTo(b.path));
 
 // Hash paths and contents so additions, deletions and ABI changes invalidate
@@ -85,10 +87,15 @@ Future<List<Uri>> _sourceEntries(Directory directory) async => [
     ],
 ];
 
-/// Whether [entry] is hidden, such as .DS_Store.
+/// Whether [entry] is hidden, such as .DS_Store, or Cargo output left by
+/// building a vendored crate on its own: its `target` directory, or its
+/// lockfile, which Cargo ignores for dependencies.
 bool _isSkipped(FileSystemEntity entry) {
   final name = entry.uri.pathSegments.lastWhere((s) => s.isNotEmpty);
-  return name.startsWith('.');
+  if (name.startsWith('.') || name == 'Cargo.lock') return true;
+  return entry is Directory &&
+      name == 'target' &&
+      File.fromUri(entry.parent.uri.resolve('Cargo.toml')).existsSync();
 }
 
 /// [bytes] with each CRLF replaced by LF.
