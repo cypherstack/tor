@@ -103,12 +103,12 @@ impl SaturatingTime for Instant {
 }
 
 /// Finds the value for [`SaturatingTime::max_value()`].
-fn find_max<T: SaturatingTime>() -> T {
+fn find_max<T: SaturatingTime + PartialEq>() -> T {
     find_limit(T::checked_add)
 }
 
 /// Finds the value for [`SaturatingTime::min_value()`].
-fn find_min<T: SaturatingTime>() -> T {
+fn find_min<T: SaturatingTime + PartialEq>() -> T {
     find_limit(T::checked_sub)
 }
 
@@ -123,12 +123,16 @@ fn find_min<T: SaturatingTime>() -> T {
 ///
 /// 1. Set `step` to `INITIAL_STEP` and `res` to [`SaturatingTime::anchor()`].
 /// 2. Call `f(&res, step)`.
-///     1. If [`Some`], set `res` to the returned value and continue.
-///     2. If [`None`] and `step == 1ns`, return `res`.
+///     1. If [`Some`] and different from `res`, set `res` to the returned
+///        value and continue.
+///     2. If [`None`] or unchanged, and `step == 1ns`, return `res`.
 ///     3. Else, set `step` to `MAX{1ns, step / 2}` and continue.
+///
+/// Steps below the platform clock resolution can leave `res` unchanged.
+/// Treat those steps as overflow so the search terminates.
 fn find_limit<T, F>(f: F) -> T
 where
-    T: SaturatingTime,
+    T: SaturatingTime + PartialEq,
     F: Fn(&T, Duration) -> Option<T>,
 {
     const INITIAL_STEP: Duration = Duration::new(1_000_000_000_000_000_000, 0);
@@ -142,13 +146,13 @@ where
         // (2) Call f().
         let next = f(&res, step);
         match next {
-            Some(st) => {
-                // (2.1) If Some, set res to the returned value and continue.
+            Some(st) if st != res => {
+                // (2.1) Advance only when the clock value changes.
                 res = st;
             }
-            None => {
+            Some(_) | None => {
                 if step == ONE_NS {
-                    // (2.2) If None and step == 1ns, return res.
+                    // (2.2) Stop when no representable step remains.
                     return res;
                 } else {
                     // (2.3) Else, set step to MAX{1ns, step / 2}.
@@ -182,6 +186,21 @@ mod tests {
     };
 
     use super::*;
+
+    #[test]
+    fn limit_search_handles_coarse_clock_resolution() {
+        let calls = std::cell::Cell::new(0);
+        let minimum = find_limit::<SystemTime, _>(|time, step| {
+            calls.set(calls.get() + 1);
+            assert!(calls.get() < 1000, "limit search stopped making progress");
+            // Model a 100ns SystemTime resolution on every platform.
+            let rounded = Duration::new(step.as_secs(), step.subsec_nanos() / 100 * 100);
+            time.checked_sub(rounded)
+        });
+
+        assert!(minimum < SystemTime::UNIX_EPOCH);
+        assert!(minimum.checked_sub(Duration::from_nanos(100)).is_none());
+    }
 
     /// Checks whether the minimum and maximum values are correct.
     fn min_max<T>()
