@@ -71,6 +71,8 @@
 * `tor_proxy_stop` waits for the SOCKS accept loop to exit before returning,
   so the listeners and its reference to the client are released, and Dart
   runs it on a worker isolate.
+* Use the data directories literally; names containing `$` or `~` were
+  expanded as variables and rejected.
 * When the OS assigns the SOCKS port and its IPv6 loopback twin is held by
   another process, try up to three more ports, then fail to start with an
   error saying the twin stayed occupied. Serving IPv4 alone there would let

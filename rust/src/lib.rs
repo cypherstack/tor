@@ -164,8 +164,10 @@ pub unsafe extern "C" fn tor_start(
     let mut cfg_builder = TorClientConfig::builder();
     cfg_builder
         .storage()
-        .state_dir(CfgPath::new(state_dir.to_owned()))
-        .cache_dir(CfgPath::new(cache_dir.to_owned()));
+        // The paths come from the caller as-is; `CfgPath::new` would expand
+        // `$VAR` and `~` and reject directories whose names contain them.
+        .state_dir(CfgPath::new_literal(state_dir))
+        .cache_dir(CfgPath::new_literal(cache_dir));
     cfg_builder.address_filter().allow_onion_addrs(true);
 
     let cfg = unwrap_or_return!(cfg_builder.build(), err_ret);
@@ -907,6 +909,28 @@ mod tests {
         TcpListener::bind((Ipv4Addr::LOCALHOST, port)).unwrap();
         drop(client);
         drop(runtime);
+    }
+
+    #[test]
+    fn tor_start_uses_the_data_directories_literally() {
+        let root = scratch_dir("literal-paths");
+        // `CfgPath::new` treated this as a variable reference and failed.
+        let state_path = root.join("$state");
+        let cache_path = root.join("~cache");
+        let state = CString::new(state_path.to_str().unwrap()).unwrap();
+        let cache = CString::new(cache_path.to_str().unwrap()).unwrap();
+
+        let result = unsafe { tor_start(0, state.as_ptr(), cache.as_ptr()) };
+        let error = crate::error::take_last_error().map(|e| e.to_string());
+        assert!(!result.client.is_null(), "{error:?}");
+        unsafe {
+            tor_proxy_stop(result.proxy);
+            tor_client_free(result.client);
+        }
+
+        assert!(state_path.is_dir(), "state dir was not created literally");
+        assert!(cache_path.is_dir(), "cache dir was not created literally");
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
