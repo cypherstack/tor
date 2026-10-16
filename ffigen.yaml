@@ -19,3 +19,9 @@ preamble: |
 comments:
   style: any
   length: full
+
+# Keep Dart names stable while keeping C enumerators out of the global namespace.
+enums:
+  member-rename:
+    TorBootstrapStatus:
+      'TorBootstrapStatus_(.*)': '$1'

@@ -2,10 +2,10 @@
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use cbindgen::{Config, Language};
+use cbindgen::{Config, EnumConfig, Language};
+use glob::glob;
 use std::env;
 use std::path::PathBuf;
-use glob::glob;
 
 fn main() {
     android_on_linux_check();
@@ -18,9 +18,16 @@ fn main() {
         .join(format!("{}.h", package_name))
         .display()
         .to_string();
+    println!("cargo:rerun-if-env-changed=CARGO_TARGET_DIR");
+    println!("cargo:rustc-env=TOR_FFI_PLUGIN_HEADER={}", output_file);
 
     let config = Config {
         language: Language::C,
+        cpp_compat: true,
+        enumeration: EnumConfig {
+            prefix_with_name: true,
+            ..Default::default()
+        },
         ..Default::default()
     };
 
@@ -37,7 +44,6 @@ fn target_dir() -> PathBuf {
     }
 }
 
-
 fn android_on_linux_check() {
     let target = env::var("TARGET").unwrap();
     if target == "x86_64-linux-android" {
@@ -48,7 +54,7 @@ fn android_on_linux_check() {
         };
 
         let ndk_home_result = env::var("ANDROID_NDK_HOME");
-        let ndk_home = if let Some(value) = ndk_home_result.ok()  {
+        let ndk_home = if let Ok(value) = ndk_home_result {
             value
         } else {
             println!("ANDROID_NDK_HOME not set. Trying CC_x86_64_linux_android");
