@@ -47,6 +47,7 @@ class _ExampleTorNative extends TorNative {
 
 class _FailedWriteSocket implements SOCKSSocket {
   bool readStarted = false;
+  bool closed = false;
 
   @override
   Future<void> connect() async {}
@@ -66,7 +67,9 @@ class _FailedWriteSocket implements SOCKSSocket {
   }
 
   @override
-  Future<void> close() async {}
+  Future<void> close() async {
+    closed = true;
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -126,6 +129,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       expect(socket.readStarted, isFalse);
+      expect(socket.closed, isTrue);
       expect(
         messages,
         contains(

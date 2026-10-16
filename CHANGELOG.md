@@ -5,6 +5,9 @@
   a failed release and clear errors after success. Ignore asynchronous state
   updates after the widget is disposed. Await SOCKS request writes so async
   write failures reach the example's connection error handler.
+  The Bitcoin onion test validates its own field and reports a missing port
+  instead of throwing, and every example connection closes its socket or
+  HTTP client when the request fails.
 
 * Bump arti to 2.7.0 and its supporting crates to 0.47.0; needs Rust 1.92.
 * Vendor a reviewed `saturating-time` 0.5.0 fork under `rust/patches/`, with
