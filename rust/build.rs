@@ -18,6 +18,8 @@ fn main() {
         .join(format!("{}.h", package_name))
         .display()
         .to_string();
+    println!("cargo:rerun-if-changed=src");
+    println!("cargo:rerun-if-changed=Cargo.toml");
     println!("cargo:rerun-if-env-changed=CARGO_TARGET_DIR");
     println!("cargo:rustc-env=TOR_FFI_PLUGIN_HEADER={}", output_file);
 
