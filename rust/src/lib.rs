@@ -506,7 +506,7 @@ fn bind_localhost(
 
 /// The error reported when IPv6 loopback could not be bound on `ipv6`.
 fn ipv6_bind_error(requested_port: u16, ipv6: SocketAddr, error: io::Error) -> io::Error {
-    let reason = if requested_port == 0 && error.kind() == io::ErrorKind::AddrInUse {
+    let reason = if requested_port == 0 && ipv6_twin_is_occupied(&error) {
         format!(
             "the IPv6 twin of the assigned port was occupied after {} attempts ({error})",
             IPV6_BIND_RETRIES + 1
@@ -536,10 +536,27 @@ fn ipv6_bind_fallback(requested_port: u16, retries_left: u32, error: &io::Error)
     // Only an OS-assigned port can be swapped for another one. A port the
     // caller asked for is reported as occupied, as it is for IPv4. Serving
     // IPv4 alone would leave `[::1]` on the published port to another process.
-    if requested_port == 0 && error.kind() == io::ErrorKind::AddrInUse && retries_left > 0 {
+    if requested_port == 0 && ipv6_twin_is_occupied(error) && retries_left > 0 {
         return Ipv6Fallback::Retry;
     }
     Ipv6Fallback::Fail
+}
+
+/// Whether another process holds the IPv6 loopback port.
+fn ipv6_twin_is_occupied(error: &io::Error) -> bool {
+    if error.kind() == io::ErrorKind::AddrInUse {
+        return true;
+    }
+
+    // A process holding `[::]` with SO_EXCLUSIVEADDRUSE makes binding `[::1]`
+    // on that port fail with WSAEACCES (10013), not WSAEADDRINUSE. A port in
+    // an excluded range (Hyper-V, WinNAT) fails the same way.
+    #[cfg(windows)]
+    if error.raw_os_error() == Some(10013) {
+        return true;
+    }
+
+    false
 }
 
 /// Whether IPv6 loopback is unavailable on this host. IPv4 remains usable in
@@ -951,6 +968,12 @@ mod tests {
 
         #[cfg(windows)]
         {
+            // WSAEACCES: the IPv6 twin is held with SO_EXCLUSIVEADDRUSE.
+            let exclusive = io::Error::from_raw_os_error(10013);
+            assert_eq!(ipv6_bind_fallback(0, 2, &exclusive), Ipv6Fallback::Retry);
+            assert_eq!(ipv6_bind_fallback(0, 0, &exclusive), Ipv6Fallback::Fail);
+            assert_eq!(ipv6_bind_fallback(9050, 2, &exclusive), Ipv6Fallback::Fail);
+
             let no_ipv6 = io::Error::from_raw_os_error(10047);
             assert_eq!(ipv6_bind_fallback(0, 0, &no_ipv6), Ipv6Fallback::Ipv4Only);
             assert_eq!(
