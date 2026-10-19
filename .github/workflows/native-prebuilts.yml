@@ -198,6 +198,7 @@ jobs:
           - {platform: android, runner: ubuntu-22.04}
           - {platform: ios, runner: macos-15}
           - {platform: macos, runner: macos-15}
+          - {platform: windows, runner: windows-2022}
     defaults:
       run:
         shell: bash
@@ -227,6 +228,7 @@ jobs:
             ios) target=aarch64-apple-ios ;;
             # flutter build macos is universal, so the hook also builds x86_64.
             macos) target=aarch64-apple-darwin,x86_64-apple-darwin ;;
+            windows) target=x86_64-pc-windows-msvc ;;
           esac
           bash tool/ci/install_rust.sh --target "$target"
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
@@ -245,10 +247,14 @@ jobs:
             android) flutter build apk --release --target-platform android-arm64 ;;
             ios) flutter build ios --release --no-codesign ;;
             macos) flutter build macos --release ;;
+            windows) flutter build windows --release ;;
           esac
       - name: Load packaged macOS library
         if: matrix.platform == 'macos'
         run: bash tool/ci/check_macos_app.sh
+      - name: Load packaged Windows library
+        if: matrix.platform == 'windows'
+        run: python tool/ci/smoke_native.py example/build/windows/x64/runner/Release/tor_ffi_plugin.dll
 
   release:
     if: github.event_name != 'pull_request' && github.event.deleted != true
