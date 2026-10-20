@@ -10,7 +10,8 @@
   HTTP client when the request fails. The buttons follow `Tor.status`, so
   Stop stays available while the native handles are held.
 
-* Bump arti to 2.7.0 and its supporting crates to 0.47.0; needs Rust 1.92.
+* Bump arti to 2.7.0 and its supporting crates to 0.47.0; the pinned
+  toolchain is Rust 1.99.1.
 * Vendor a reviewed `saturating-time` 0.5.0 fork under `rust/patches/`, with
   regression coverage for coarse platform clocks. Source builds fetch only
   from crates.io, and the prebuilt source fingerprint covers the patch but
