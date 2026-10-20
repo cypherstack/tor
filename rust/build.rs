@@ -21,6 +21,9 @@ fn main() {
     println!("cargo:rerun-if-changed=src");
     println!("cargo:rerun-if-changed=Cargo.toml");
     println!("cargo:rerun-if-env-changed=CARGO_TARGET_DIR");
+    // android_on_linux_check reads these to find the NDK's clang runtime.
+    println!("cargo:rerun-if-env-changed=ANDROID_NDK_HOME");
+    println!("cargo:rerun-if-env-changed=CC_x86_64_linux_android");
     println!("cargo:rustc-env=TOR_FFI_PLUGIN_HEADER={}", output_file);
 
     let config = Config {

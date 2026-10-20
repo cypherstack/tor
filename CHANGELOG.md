@@ -120,6 +120,9 @@
   hash sources as bytes, so stray files no longer fail or invalidate builds.
 * Avoid hashing all Rust inputs during source builds; full fingerprints remain
   required when selecting prebuilts.
+* `rust/build.rs` declares its rerun triggers explicitly and includes
+  `ANDROID_NDK_HOME` and `CC_x86_64_linux_android`, so an x86_64 Android
+  build picks up a switched NDK without a clean build.
 * Validate packaged macOS framework loading and audit Rust dependencies in CI
   without granting write access to the workflow token.
 * Keep Cargo's default release stripping on every platform. On macOS it
