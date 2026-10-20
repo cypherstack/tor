@@ -133,6 +133,23 @@ Future<void> startAndBootstrap(
   expect(tor.status, TorStatus.on);
 }
 
+/// A skip reason when this machine cannot create symlinks, otherwise false.
+///
+/// Windows allows them only with Developer Mode or elevation.
+final Object symlinkSkip = () {
+  final probe = Directory.systemTemp.createTempSync('tor-symlink-');
+  final sep = Platform.pathSeparator;
+  try {
+    final target = Directory('${probe.path}${sep}target')..createSync();
+    Link('${probe.path}${sep}link').createSync(target.path);
+    return false;
+  } on FileSystemException {
+    return 'creating symlinks needs Developer Mode or elevation';
+  } finally {
+    probe.deleteSync(recursive: true);
+  }
+}();
+
 void main() {
   late Directory dataDir;
   late FakeTorNative native;
@@ -560,28 +577,55 @@ void main() {
 
     expect(native.startDirectories, hasLength(1));
     await tor.stop();
-  }, skip: Platform.isWindows ? 'symlinks need elevated privileges' : false);
+  }, skip: symlinkSkip);
 
-  test('a parent segment after a symlink follows the link', () async {
+  test(
+    'a parent segment after a symlink follows the link',
+    () async {
+      final sep = Platform.pathSeparator;
+      final target = Directory('${dataDir.path}${sep}a${sep}target')
+        ..createSync(recursive: true);
+      Link('${dataDir.path}${sep}link').createSync(target.path);
+
+      // Lexically this is dataDir/sibling; the file system resolves it to
+      // dataDir/a/sibling.
+      await startAndBootstrap(
+        tor,
+        native,
+        '${dataDir.path}${sep}link$sep..${sep}sibling',
+      );
+
+      final physical = Directory('${dataDir.path}${sep}a${sep}sibling')
+          .resolveSymbolicLinksSync();
+      expect(native.startDirectories[0], '$physical/tor_state');
+      expect(Directory('${dataDir.path}${sep}sibling').existsSync(), isFalse);
+      await tor.stop();
+    },
+    skip: Platform.isWindows ? 'Windows resolves .. before links' : symlinkSkip,
+  );
+
+  test('on Windows a parent segment after a symlink is lexical', () async {
     final sep = Platform.pathSeparator;
     final target = Directory('${dataDir.path}${sep}a${sep}target')
       ..createSync(recursive: true);
     Link('${dataDir.path}${sep}link').createSync(target.path);
 
-    // Lexically this is dataDir/sibling; the file system resolves it to
-    // dataDir/a/sibling.
+    // Win32 normalizes the path before the file system sees the link.
     await startAndBootstrap(
       tor,
       native,
       '${dataDir.path}${sep}link$sep..${sep}sibling',
     );
 
-    final physical = Directory('${dataDir.path}${sep}a${sep}sibling')
+    final physical = Directory('${dataDir.path}${sep}sibling')
         .resolveSymbolicLinksSync();
     expect(native.startDirectories[0], '$physical/tor_state');
-    expect(Directory('${dataDir.path}${sep}sibling').existsSync(), isFalse);
+    expect(
+      Directory('${dataDir.path}${sep}a${sep}sibling').existsSync(),
+      isFalse,
+    );
     await tor.stop();
-  }, skip: Platform.isWindows ? 'symlinks need elevated privileges' : false);
+  }, skip: Platform.isWindows ? symlinkSkip : 'Win32 path semantics');
 
   test('an unusable data directory fails while it is resolved', () async {
     final sep = Platform.pathSeparator;
