@@ -8,7 +8,9 @@
   The Bitcoin onion test validates its own field and reports a missing port
   instead of throwing, and every example connection closes its socket or
   HTTP client when the request fails. The buttons follow `Tor.status`, so
-  Stop stays available while the native handles are held.
+  Stop stays available while the native handles are held. The sandboxed
+  macOS release build may open network connections and the local SOCKS
+  listener, so Tor starts outside debug builds too.
 
 * Bump arti to 2.7.0 and its supporting crates to 0.47.0; the pinned
   toolchain is Rust 1.99.1.
