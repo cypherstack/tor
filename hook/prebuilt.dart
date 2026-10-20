@@ -29,24 +29,28 @@ String releaseFileName(String target) => '$target-${libraryName(target)}';
 Future<String> fileHash(File file) async =>
     (await sha256.bind(file.openRead()).first).toString();
 
+/// Native source files tracked as a whole.
+const _sourceFiles = [
+  'rust/Cargo.toml',
+  'rust/Cargo.lock',
+  'rust/rust-toolchain.toml',
+  'rust/build.rs',
+  'hook/build.dart',
+  'lib/tor_ffi_plugin_bindings_generated.dart',
+];
+
+/// Native source trees whose entries are tracked recursively.
+const _sourceDirectories = ['rust/src/', 'rust/patches/'];
+
 /// Native inputs to track for Flutter's hook cache.
 ///
 /// Directories are included so additions and deletions invalidate the build.
 /// Hidden entries are not native inputs and are skipped.
 Future<List<Uri>> sourceDependencies(Uri root) async => <Uri>[
-  for (final path in [
-    'rust/Cargo.toml',
-    'rust/Cargo.lock',
-    'rust/rust-toolchain.toml',
-    'rust/build.rs',
-    'hook/build.dart',
-    'lib/tor_ffi_plugin_bindings_generated.dart',
-    'rust/src/',
-    'rust/patches/',
-  ])
+  for (final path in [..._sourceFiles, ..._sourceDirectories])
     root.resolve(path),
-  ...await _sourceEntries(Directory.fromUri(root.resolve('rust/src/'))),
-  ...await _sourceEntries(Directory.fromUri(root.resolve('rust/patches/'))),
+  for (final path in _sourceDirectories)
+    ...await _sourceEntries(Directory.fromUri(root.resolve(path))),
 ]..sort((a, b) => a.path.compareTo(b.path));
 
 // Hash paths and contents so additions, deletions and ABI changes invalidate
