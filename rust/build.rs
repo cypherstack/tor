@@ -18,7 +18,12 @@ fn main() {
         .join(format!("{}.h", package_name))
         .display()
         .to_string();
-    println!("cargo:rerun-if-changed=src");
+    // List files rather than src itself: Cargo copies the directory into the
+    // dep-info, where the Flutter hook runner takes it for a missing file and
+    // reruns the hook on every build. Adding a module edits a listed file.
+    for source in glob("src/**/*.rs").unwrap() {
+        println!("cargo:rerun-if-changed={}", source.unwrap().display());
+    }
     println!("cargo:rerun-if-changed=Cargo.toml");
     println!("cargo:rerun-if-env-changed=CARGO_TARGET_DIR");
     // android_on_linux_check reads these to find the NDK's clang runtime.
