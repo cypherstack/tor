@@ -341,7 +341,6 @@ class Tor {
       // Retain the native handles before bootstrap so stop can cancel it.
       _clientPtr = tor.client;
       _proxyPtr = tor.proxy;
-      operation.client = tor.client;
 
       if (operation.cancelRequested) {
         throw const TorStartCancelled();
@@ -363,7 +362,6 @@ class Tor {
     } catch (error, stackTrace) {
       // Release anything the native start produced before bootstrap failed;
       // the next start would otherwise overwrite these handles.
-      operation.client = nullptr;
       try {
         await _stop();
       } catch (cleanupError, cleanupStackTrace) {
@@ -401,11 +399,16 @@ class Tor {
   Future<void> stop() {
     for (final pending in _pendingStarts) {
       pending.cancelRequested = true;
-      if (pending.client != nullptr) {
-        _native.cancelBootstrap(pending.client);
-      }
     }
     _pendingStarts.clear();
+    // A bootstrap can only be in progress while starting on a client that no
+    // _stop has begun releasing. _stop marks the handles before its first
+    // await, so this never touches a client that is being freed.
+    if (_status == TorStatus.starting &&
+        _clientPtr != nullptr &&
+        !_releasePending) {
+      _native.cancelBootstrap(_clientPtr);
+    }
     return _enqueue(_stop);
   }
 
@@ -493,5 +496,4 @@ class _StartOperation {
   final Duration bootstrapTimeout;
   late final Future<void> future;
   bool cancelRequested = false;
-  Pointer<Void> client = nullptr;
 }

@@ -328,6 +328,8 @@ void main() {
     await stopped;
     expect(tor.status, TorStatus.off);
     expect(native.liveClients, isEmpty);
+    // Nothing was bootstrapping, so there was nothing to cancel natively.
+    expect(native.cancelCalls, 0);
   });
 
   test(
@@ -350,6 +352,32 @@ void main() {
       expect(native.cancelCalls, 0);
     },
   );
+
+  test('stop during failed-start cleanup leaves the client alone', () async {
+    final gate = native.freeGate = Completer<void>();
+    final started = tor.start(torDataDirPath: dataDir.path);
+    final failure = expectLater(started, throwsException);
+    await native.waitForBootstraps(1);
+    native.pendingBootstraps[0].completeError(Exception('bootstrap failed'));
+    while (native.createdProxies.isNotEmpty) {
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    }
+
+    // The proxy is gone and the client is being freed; status is still
+    // starting and the handle is still set.
+    expect(tor.status, TorStatus.starting);
+    expect(native.liveClients, hasLength(1));
+    final stopped = tor.stop();
+    // Cancelling a bootstrap on a client that is being freed would race the
+    // free, so stop must not touch the handle.
+    expect(native.cancelCalls, 0);
+
+    gate.complete();
+    await failure;
+    await stopped;
+    expect(tor.status, TorStatus.off);
+    expect(native.liveClients, isEmpty);
+  });
 
   test('a start cancelled by an immediate stop leaves Tor off', () async {
     final started = tor.start(torDataDirPath: dataDir.path);
