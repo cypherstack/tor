@@ -36,6 +36,11 @@ lazy_static! {
 /// How long freeing a client waits for its background tasks to finish.
 const CLIENT_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// Worker threads on each client's runtime. Tor traffic is I/O bound and
+/// storage runs on the blocking pool, so tokio's default of one thread per
+/// core would sit idle.
+const CLIENT_WORKER_THREADS: usize = 2;
+
 /// How many more OS-assigned ports to try when another process holds the
 /// IPv6 twin of the assigned port, before failing.
 const IPV6_BIND_RETRIES: u32 = 3;
@@ -58,7 +63,10 @@ struct ClientRuntime(Option<Runtime>);
 impl ClientRuntime {
     fn new() -> io::Result<Self> {
         Ok(Self(Some(
-            Builder::new_multi_thread().enable_all().build()?,
+            Builder::new_multi_thread()
+                .worker_threads(CLIENT_WORKER_THREADS)
+                .enable_all()
+                .build()?,
         )))
     }
 

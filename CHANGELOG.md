@@ -70,6 +70,9 @@
   not be deleted on Windows. If the release itself fails, `stop` throws and
   the next `start` or `stop` retries it before opening a new client. If proxy
   release fails, retain its client too and retry the proxy before freeing it.
+* Each client runs on its own runtime with two worker threads, created only
+  after the SOCKS port is bound. Before, every `tor_start` built a pool with
+  one thread per CPU core, even when the port turned out to be taken.
 * `Tor.start` after an unawaited `Tor.stop` restarts Tor instead of returning
   at once and letting the queued stop leave it off. Starts always queue behind
   earlier calls; a start with a different data directory than the running
