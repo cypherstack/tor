@@ -199,23 +199,27 @@ class _MyAppState extends State<Home> {
     }
   }
 
-  Future<void> testStackWalletSslConnection() async {
+  // Ask an Electrum server for its features through the proxy.
+  Future<void> _testServerFeatures(
+    String host,
+    int port, {
+    required bool ssl,
+    required String label,
+  }) async {
     SOCKSSocket? socksSocket;
     try {
       // Instantiate a socks socket at localhost and on the port selected by the tor service.
       socksSocket = await SOCKSSocket.create(
         proxyHost: InternetAddress.loopbackIPv4.address,
         proxyPort: _tor.port,
-        sslEnabled: true, // For SSL connections.
+        sslEnabled: ssl, // For SSL connections.
       );
 
       // Connect to the socks instantiated above.
       await socksSocket.connect();
 
-      // Connect to bitcoin.stackwallet.com on port 50002 via socks socket.
-      //
-      // Note that this is an SSL example.
-      await socksSocket.connectTo('bitcoin.stackwallet.com', 50002);
+      // Connect to the server via socks socket.
+      await socksSocket.connectTo(host, port);
 
       // Send a server features command to the connected socket, see method for more specific usage example..
       await socksSocket.sendServerFeaturesCommand();
@@ -246,83 +250,47 @@ class _MyAppState extends State<Home> {
       // 	}
       // }
     } catch (e, s) {
-      debugPrint("Error connecting to bitcoin.stackwallet.com: $e\n$s");
+      debugPrint("Error connecting to $label: $e\n$s");
     } finally {
       // Close the socket, also on failure.
       await _closeQuietly(socksSocket);
     }
   }
 
+  // Connect to bitcoin.stackwallet.com on port 50002 via socks socket.
+  //
+  // Note that this is an SSL example.
+  Future<void> testStackWalletSslConnection() => _testServerFeatures(
+    'bitcoin.stackwallet.com',
+    50002,
+    ssl: true,
+    label: 'bitcoin.stackwallet.com',
+  );
+
   Future<void> testBitcoinOnionNodeConnection() async {
-    SOCKSSocket? socksSocket;
-    try {
-      // Validate the onion address.
-      if (!bitcoinOnionController.text.contains(".onion")) {
-        debugPrint("Invalid onion address");
-        return;
-      } else if (!bitcoinOnionController.text.contains(":")) {
-        debugPrint("Invalid onion address (needs port)");
-        return;
-      }
-
-      final String domain = bitcoinOnionController.text.split(":").first;
-      final int? port = int.tryParse(
-        bitcoinOnionController.text.split(":").last,
-      );
-      if (port == null) {
-        debugPrint("Invalid onion address (invalid port)");
-        return;
-      }
-
-      // Instantiate a socks socket at localhost and on the port selected by the tor service.
-      socksSocket = await SOCKSSocket.create(
-        proxyHost: InternetAddress.loopbackIPv4.address,
-        proxyPort: _tor.port,
-        sslEnabled: !domain.endsWith(".onion"), // For SSL connections.
-      );
-
-      // Connect to the socks instantiated above.
-      await socksSocket.connect();
-
-      // Connect to onion node via socks socket.
-      //
-      // Note that this is an SSL example.
-      await socksSocket.connectTo(domain, port);
-
-      // Send a server features command to the connected socket, see method for more specific usage example..
-      await socksSocket.sendServerFeaturesCommand();
-
-      // You should see a server response printed to the console.
-      //
-      // Example response:
-      // `flutter: secure responseData: {
-      // 	"id": "0",
-      // 	"jsonrpc": "2.0",
-      // 	"result": {
-      // 		"cashtokens": true,
-      // 		"dsproof": true,
-      // 		"genesis_hash": "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f",
-      // 		"hash_function": "sha256",
-      // 		"hosts": {
-      // 			"bitcoin.stackwallet.com": {
-      // 				"ssl_port": 50002,
-      // 				"tcp_port": 50001,
-      // 				"ws_port": 50003,
-      // 				"wss_port": 50004
-      // 			}
-      // 		},
-      // 		"protocol_max": "1.5",
-      // 		"protocol_min": "1.4",
-      // 		"pruning": null,
-      // 		"server_version": "Fulcrum 1.9.1"
-      // 	}
-      // }
-    } catch (e, s) {
-      debugPrint("Error connecting to Bitcoin onion node: $e\n$s");
-    } finally {
-      // Close the socket, also on failure.
-      await _closeQuietly(socksSocket);
+    // Validate the onion address.
+    if (!bitcoinOnionController.text.contains(".onion")) {
+      debugPrint("Invalid onion address");
+      return;
+    } else if (!bitcoinOnionController.text.contains(":")) {
+      debugPrint("Invalid onion address (needs port)");
+      return;
     }
+
+    final String domain = bitcoinOnionController.text.split(":").first;
+    final int? port = int.tryParse(bitcoinOnionController.text.split(":").last);
+    if (port == null) {
+      debugPrint("Invalid onion address (invalid port)");
+      return;
+    }
+
+    // Connect to the onion node via socks socket.
+    await _testServerFeatures(
+      domain,
+      port,
+      ssl: !domain.endsWith(".onion"),
+      label: 'Bitcoin onion node',
+    );
   }
 
   @override
