@@ -330,6 +330,27 @@ void main() {
     expect(native.liveClients, isEmpty);
   });
 
+  test(
+    'a stop during a reusing start cancels it instead of reporting on',
+    () async {
+      await startAndBootstrap(tor, native, dataDir.path);
+
+      final reused = tor.start(torDataDirPath: dataDir.path);
+      // The queued start is now resolving the data directory, which cannot
+      // finish until the event loop advances beyond this microtask.
+      await Future<void>.value();
+      final stopped = tor.stop();
+
+      // Before the fix the start saw the running instance and returned success,
+      // and the queued stop then turned Tor off right after.
+      await expectLater(reused, throwsA(isA<TorStartCancelled>()));
+      await stopped;
+      expect(tor.status, TorStatus.off);
+      expect(native.liveClients, isEmpty);
+      expect(native.cancelCalls, 0);
+    },
+  );
+
   test('a start cancelled by an immediate stop leaves Tor off', () async {
     final started = tor.start(torDataDirPath: dataDir.path);
     expect(tor.status, TorStatus.starting);

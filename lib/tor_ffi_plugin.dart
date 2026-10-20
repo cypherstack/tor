@@ -303,6 +303,13 @@ class Tor {
       rethrow;
     }
 
+    // A stop queued while the directory was resolving runs next. Returning
+    // success here would report Tor as running just before that stop turns
+    // it off.
+    if (operation.cancelRequested) {
+      throw const TorStartCancelled();
+    }
+
     if (_status == TorStatus.on && !_releasePending) {
       if (_activeDataDirPath == dataDirPath) {
         return;

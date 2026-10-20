@@ -72,7 +72,10 @@
 * `Tor.start` after an unawaited `Tor.stop` restarts Tor instead of returning
   at once and letting the queued stop leave it off. Starts always queue behind
   earlier calls; a start with a different data directory than the running
-  instance fails with a `StateError` and leaves it running.
+  instance fails with a `StateError` and leaves it running. A `stop` issued
+  while a start is resolving its data directory cancels that start with
+  `TorStartCancelled` rather than letting it report success just before the
+  stop turns Tor off.
 * `Tor.status` stays `on` while releasing a running instance, including when
   release fails and handles remain for retry. Failed startup cleanup stays
   `starting`; the next `start` or `stop` retries teardown before creating a new
