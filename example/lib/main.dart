@@ -34,12 +34,21 @@ class Home extends StatefulWidget {
 }
 
 class _MyAppState extends State<Home> {
-  // Flag to track if tor has started.
-  bool torIsRunning = false;
   String? torError;
-  bool _torStopFailed = false;
 
   Tor get _tor => widget.tor ?? Tor.instance;
+
+  // Whether requests can use the proxy. After a failed stop the client is
+  // still held, so Tor reports on, but its proxy has already shut down and
+  // `port` throws.
+  bool get torIsRunning {
+    if (_tor.status != TorStatus.on) return false;
+    try {
+      return _tor.port > 0;
+    } on Exception {
+      return false;
+    }
+  }
 
   // Set the default text for the host input field.
   final hostController = TextEditingController(text: 'https://icanhazip.com/');
@@ -96,19 +105,12 @@ class _MyAppState extends State<Home> {
       );
 
       if (!mounted) return;
-      setState(() {
-        torIsRunning = _tor.status == TorStatus.on;
-        torError = null;
-        _torStopFailed = false;
-      });
+      setState(() => torError = null);
       debugPrint('Done awaiting; tor should be running');
     } catch (error) {
       debugPrint('Unable to start Tor: $error');
       if (!mounted) return;
-      setState(() {
-        torIsRunning = false;
-        torError = 'Unable to start Tor: $error';
-      });
+      setState(() => torError = 'Unable to start Tor: $error');
     }
   }
 
@@ -116,19 +118,11 @@ class _MyAppState extends State<Home> {
     try {
       await _tor.disable();
       if (!mounted) return;
-      setState(() {
-        torIsRunning = false;
-        torError = null;
-        _torStopFailed = false;
-      });
+      setState(() => torError = null);
     } catch (error) {
       debugPrint('Unable to stop Tor: $error');
       if (!mounted) return;
-      setState(() {
-        torIsRunning = false;
-        torError = 'Unable to stop Tor: $error';
-        _torStopFailed = true;
-      });
+      setState(() => torError = 'Unable to stop Tor: $error');
     }
   }
 
@@ -379,7 +373,9 @@ class _MyAppState extends State<Home> {
                     child: const Text("Start tor"),
                   ),
                   TextButton(
-                    onPressed: torIsRunning || _torStopFailed ? stopTor : null,
+                    // Also while starting, or when a failed release left the
+                    // native handles held, so the stop can be retried.
+                    onPressed: _tor.status == TorStatus.off ? null : stopTor,
                     child: const Text("Stop tor"),
                   ),
                 ],

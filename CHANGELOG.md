@@ -7,7 +7,8 @@
   write failures reach the example's connection error handler.
   The Bitcoin onion test validates its own field and reports a missing port
   instead of throwing, and every example connection closes its socket or
-  HTTP client when the request fails.
+  HTTP client when the request fails. The buttons follow `Tor.status`, so
+  Stop stays available while the native handles are held.
 
 * Bump arti to 2.7.0 and its supporting crates to 0.47.0; needs Rust 1.92.
 * Vendor a reviewed `saturating-time` 0.5.0 fork under `rust/patches/`, with
