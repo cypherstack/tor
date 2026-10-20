@@ -89,7 +89,9 @@ void main() {
     });
 
     test('a passed deadline throws TorBootstrapTimeout', () async {
-      const timeout = Duration(milliseconds: 1);
+      // Not a whole number of milliseconds: the exception must carry the
+      // duration as passed, not the rounded native deadline.
+      const timeout = Duration(microseconds: 1500);
       await expectLater(
         native.bootstrap(handles!.client, timeout),
         throwsA(

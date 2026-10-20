@@ -95,14 +95,15 @@ class TorNative {
   /// cancellation, [TorBootstrapTimeout] when [timeout] elapses, and the Rust
   /// error on failure.
   Future<void> bootstrap(Pointer<Void> client, Duration timeout) async {
-    final timeoutMillis = timeout.inMilliseconds;
-    await Isolate.run(() => _bootstrapInIsolate(client.address, timeoutMillis));
+    final address = client.address;
+    await Isolate.run(() => _bootstrapInIsolate(address, timeout));
   }
 
-  static void _bootstrapInIsolate(int client, int timeoutMillis) {
+  static void _bootstrapInIsolate(int client, Duration timeout) {
     final code = bindings.tor_client_bootstrap(
       Pointer<Void>.fromAddress(client),
-      timeoutMillis,
+      // The native deadline has millisecond resolution.
+      timeout.inMilliseconds,
     );
     switch (bindings.TorBootstrapStatus.fromValue(code)) {
       case bindings.TorBootstrapStatus.Ok:
@@ -111,10 +112,8 @@ class TorNative {
         Tor._takeRustError();
         throw const TorStartCancelled();
       case bindings.TorBootstrapStatus.TimedOut:
-        throw TorBootstrapTimeout(
-          Duration(milliseconds: timeoutMillis),
-          Tor._takeRustError(),
-        );
+        // Report the deadline as the caller passed it, not rounded.
+        throw TorBootstrapTimeout(timeout, Tor._takeRustError());
       case bindings.TorBootstrapStatus.Failed:
         Tor.throwRustException();
       case bindings.TorBootstrapStatus.NullClient:

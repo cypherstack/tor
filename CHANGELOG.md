@@ -38,7 +38,8 @@
   matching error text. C enumerators are prefixed with `TorBootstrapStatus_`
   to avoid collisions with application enums; their numeric values and Dart
   names are unchanged. The header also supports C++ callers. A passed deadline throws the new `TorBootstrapTimeout`
-  instead of a plain `Exception`.
+  instead of a plain `Exception`; its `timeout` is the `bootstrapTimeout`
+  passed to `start`, not the deadline rounded to milliseconds.
 * Report Arti's full cause chain on bootstrap failure in the error message
   Dart receives, without repeating a cause already included as the exact
   suffix of its parent's message.
