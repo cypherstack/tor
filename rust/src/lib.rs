@@ -634,10 +634,12 @@ mod tests {
         (client, runtime)
     }
 
-    /// An unbootstrapped client as the opaque pointer Dart would receive.
-    fn unbootstrapped_client_handle() -> *mut c_void {
-        let (client, runtime) = unbootstrapped_client(&scratch_dir("client"));
-        into_client_handle(client, runtime)
+    /// An unbootstrapped client as the opaque pointer Dart would receive, with
+    /// the directory to remove once the handle is freed.
+    fn unbootstrapped_client_handle() -> (*mut c_void, PathBuf) {
+        let root = scratch_dir("client");
+        let (client, runtime) = unbootstrapped_client(&root);
+        (into_client_handle(client, runtime), root)
     }
 
     #[test]
@@ -663,7 +665,7 @@ mod tests {
 
     #[test]
     fn client_handle_survives_repeated_calls_until_freed() {
-        let handle = unbootstrapped_client_handle();
+        let (handle, root) = unbootstrapped_client_handle();
 
         // Before the fix every call through the handle reconstructed and
         // dropped the owning Box, so the second call here was a use after
@@ -673,11 +675,12 @@ mod tests {
             tor_client_set_dormant(handle, false);
             tor_client_free(handle);
         }
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
     fn cancelled_bootstrap_returns_without_network_and_preserves_the_handle() {
-        let handle = unbootstrapped_client_handle();
+        let (handle, root) = unbootstrapped_client_handle();
 
         unsafe {
             tor_client_cancel_bootstrap(handle);
@@ -691,6 +694,7 @@ mod tests {
         }
         let error = crate::error::take_last_error().unwrap().to_string();
         assert!(error.contains("cancelled"), "{error}");
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -749,7 +753,7 @@ mod tests {
 
     #[test]
     fn bootstrap_status_codes_are_stable() {
-        let handle = unbootstrapped_client_handle();
+        let (handle, root) = unbootstrapped_client_handle();
 
         unsafe {
             // A zero deadline expires before an offline bootstrap can finish.
@@ -764,6 +768,7 @@ mod tests {
 
             tor_client_free(handle);
         }
+        std::fs::remove_dir_all(root).unwrap();
         assert_eq!(TorBootstrapStatus::Ok as i32, 0);
         assert_eq!(TorBootstrapStatus::Failed as i32, 3);
         assert_eq!(TorBootstrapStatus::NullClient as i32, 4);
@@ -908,7 +913,8 @@ mod tests {
 
     #[test]
     fn stopping_the_proxy_releases_its_listeners_and_client_reference() {
-        let (client, runtime) = unbootstrapped_client(&scratch_dir("proxy-stop"));
+        let root = scratch_dir("proxy-stop");
+        let (client, runtime) = unbootstrapped_client(&root);
         let arti_rt = runtime.arti().unwrap();
         let rt = proxy_runtime().unwrap();
         let (listeners, port) = bind_localhost(rt, &arti_rt, 0).unwrap();
@@ -926,6 +932,7 @@ mod tests {
         TcpListener::bind((Ipv4Addr::LOCALHOST, port)).unwrap();
         drop(client);
         drop(runtime);
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
