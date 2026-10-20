@@ -19,22 +19,36 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
-      home: Home(),
-    );
+    return const MaterialApp(home: Home());
   }
 }
 
 class Home extends StatefulWidget {
-  const Home({super.key});
+  const Home({super.key, this.tor, this.moneroSocketFactory});
+
+  final Tor? tor;
+  final Future<SOCKSSocket> Function(int proxyPort)? moneroSocketFactory;
 
   @override
   State<Home> createState() => _MyAppState();
 }
 
 class _MyAppState extends State<Home> {
-  // Flag to track if tor has started.
-  bool torIsRunning = false;
+  String? torError;
+
+  Tor get _tor => widget.tor ?? Tor.instance;
+
+  // Whether requests can use the proxy. After a failed stop the client is
+  // still held, so Tor reports on, but its proxy has already shut down and
+  // `port` throws.
+  bool get torIsRunning {
+    if (_tor.status != TorStatus.on) return false;
+    try {
+      return _tor.port > 0;
+    } on Exception {
+      return false;
+    }
+  }
 
   // Set the default text for the host input field.
   final hostController = TextEditingController(text: 'https://icanhazip.com/');
@@ -42,8 +56,8 @@ class _MyAppState extends State<Home> {
 
   // Set the default text for the onion input field.
   final onionController = TextEditingController(
-      text:
-          'https://cflarexljc3rw355ysrkrzwapozws6nre6xsy3n4yrj7taye3uiby3ad.onion');
+    text: 'https://cflarexljc3rw355ysrkrzwapozws6nre6xsy3n4yrj7taye3uiby3ad.onion',
+  );
   // See https://blog.cloudflare.com/cloudflare-onion-service/ for more options:
   // cflarexljc3rw355ysrkrzwapozws6nre6xsy3n4yrj7taye3uiby3ad.onion
   // cflarenuttlfuyn7imozr4atzvfbiw3ezgbdjdldmdx7srterayaozid.onion
@@ -57,33 +71,20 @@ class _MyAppState extends State<Home> {
   // cflare2nge4h4yqr3574crrd7k66lil3torzbisz6uciyuzqc2h2ykyd.onion
 
   final bitcoinOnionController = TextEditingController(
-      text:
-          'qly7g5n5t3f3h23xvbp44vs6vpmayurno4basuu5rcvrupli7y2jmgid.onion:50001');
+    text:
+        'qly7g5n5t3f3h23xvbp44vs6vpmayurno4basuu5rcvrupli7y2jmgid.onion:50001',
+  );
   // For more options, see https://bitnodes.io/nodes/addresses/?q=onion and
   // https://sethforprivacy.com/about/
 
   final moneroOnionController = TextEditingController(
-      text:
-          'ucdouiihzwvb5edg3ezeufcs4yp26gq4x64n6b4kuffb7s7jxynnk7qd.onion:18081/json_rpc');
+    text: 'ucdouiihzwvb5edg3ezeufcs4yp26gq4x64n6b4kuffb7s7jxynnk7qd.onion:18081/json_rpc',
+  );
 
   @override
   void initState() {
     super.initState();
-    unawaited(init());
-  }
-
-  Future<void> init() async {
-    // Start the Tor daemon.
-    await Tor.instance.start(
-      torDataDirPath: (await getApplicationSupportDirectory()).path,
-    );
-
-    // Toggle started flag.
-    setState(() {
-      torIsRunning = Tor.instance.status == TorStatus.on; // Update flag
-    });
-
-    print('Done awaiting; tor should be running');
+    unawaited(startTor());
   }
 
   @override
@@ -91,48 +92,79 @@ class _MyAppState extends State<Home> {
     // Clean up the controller when the widget is disposed.
     hostController.dispose();
     onionController.dispose();
+    bitcoinOnionController.dispose();
+    moneroOnionController.dispose();
     super.dispose();
   }
 
   Future<void> startTor() async {
-    // Start the Tor daemon.
-    await Tor.instance.start(
-      torDataDirPath: (await getApplicationSupportDirectory()).path,
-    );
+    try {
+      // Start the Tor daemon.
+      await _tor.start(
+        torDataDirPath: (await getApplicationSupportDirectory()).path,
+      );
 
-    // Toggle started flag.
-    setState(() {
-      torIsRunning = Tor.instance.status == TorStatus.on; // Update flag
-    });
+      if (!mounted) return;
+      setState(() => torError = null);
+      debugPrint('Done awaiting; tor should be running');
+    } catch (error) {
+      debugPrint('Unable to start Tor: $error');
+      if (!mounted) return;
+      setState(() => torError = 'Unable to start Tor: $error');
+    }
+  }
 
-    print('Done awaiting; tor should be running');
+  Future<void> stopTor() async {
+    try {
+      await _tor.disable();
+      if (!mounted) return;
+      setState(() => torError = null);
+    } catch (error) {
+      debugPrint('Unable to stop Tor: $error');
+      if (!mounted) return;
+      setState(() => torError = 'Unable to stop Tor: $error');
+    }
+  }
+
+  // Close a socket without letting a failing close() hide the original error.
+  Future<void> _closeQuietly(SOCKSSocket? socksSocket) async {
+    if (socksSocket == null) return;
+    try {
+      await socksSocket.close();
+    } catch (e) {
+      debugPrint("Error closing socket: $e");
+    }
   }
 
   Future<void> testMoneroOnionNodeConnection() async {
+    SOCKSSocket? socksSocket;
     try {
       // Validate the onion address.
       if (!moneroOnionController.text.contains(".onion")) {
-        print("Invalid onion address");
+        debugPrint("Invalid onion address");
         return;
       } else if (!moneroOnionController.text.contains(":")) {
-        print("Invalid onion address (needs port)");
+        debugPrint("Invalid onion address (needs port)");
         return;
       }
 
       final String host = moneroOnionController.text.split(":").first;
       final int port = int.parse(
-          moneroOnionController.text.split(":").last.split("/").first);
+        moneroOnionController.text.split(":").last.split("/").first,
+      );
       final String path = moneroOnionController.text
           .split(":")
           .last
           .split("/")
           .last; // Extract the path
 
-      var socksSocket = await SOCKSSocket.create(
-        proxyHost: InternetAddress.loopbackIPv4.address,
-        proxyPort: Tor.instance.port,
-        sslEnabled: false,
-      );
+      socksSocket =
+          await (widget.moneroSocketFactory?.call(_tor.port) ??
+              SOCKSSocket.create(
+                proxyHost: InternetAddress.loopbackIPv4.address,
+                proxyPort: _tor.port,
+                sslEnabled: false,
+              ));
 
       await socksSocket.connect();
       await socksSocket.connectTo(host, port);
@@ -143,35 +175,129 @@ class _MyAppState extends State<Home> {
         "method": "get_info",
       });
 
-      final request = 'POST /$path HTTP/1.1\r\n'
+      final request =
+          'POST /$path HTTP/1.1\r\n'
           'Host: $host\r\n'
           'Content-Type: application/json\r\n'
           'Content-Length: ${body.length}\r\n'
           '\r\n'
           '$body';
 
-      socksSocket.write(request);
-      print("Request sent: $request");
+      await socksSocket.write(request);
+      debugPrint("Request sent: $request");
 
       await for (var response in socksSocket.inputStream) {
         final result = utf8.decode(response);
-        print("Response received: $result");
+        debugPrint("Response received: $result");
         break;
       }
-
-      await socksSocket.close();
     } catch (e, s) {
-      print("Error connecting to Monero onion node: $e\n$s");
+      debugPrint("Error connecting to Monero onion node: $e\n$s");
+    } finally {
+      // Close the socket, also on failure.
+      await _closeQuietly(socksSocket);
     }
+  }
+
+  // Ask an Electrum server for its features through the proxy.
+  Future<void> _testServerFeatures(
+    String host,
+    int port, {
+    required bool ssl,
+    required String label,
+  }) async {
+    SOCKSSocket? socksSocket;
+    try {
+      // Instantiate a socks socket at localhost and on the port selected by the tor service.
+      socksSocket = await SOCKSSocket.create(
+        proxyHost: InternetAddress.loopbackIPv4.address,
+        proxyPort: _tor.port,
+        sslEnabled: ssl, // For SSL connections.
+      );
+
+      // Connect to the socks instantiated above.
+      await socksSocket.connect();
+
+      // Connect to the server via socks socket.
+      await socksSocket.connectTo(host, port);
+
+      // Send a server features command to the connected socket, see method for more specific usage example..
+      await socksSocket.sendServerFeaturesCommand();
+
+      // You should see a server response printed to the console.
+      //
+      // Example response:
+      // `flutter: secure responseData: {
+      // 	"id": "0",
+      // 	"jsonrpc": "2.0",
+      // 	"result": {
+      // 		"cashtokens": true,
+      // 		"dsproof": true,
+      // 		"genesis_hash": "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f",
+      // 		"hash_function": "sha256",
+      // 		"hosts": {
+      // 			"bitcoin.stackwallet.com": {
+      // 				"ssl_port": 50002,
+      // 				"tcp_port": 50001,
+      // 				"ws_port": 50003,
+      // 				"wss_port": 50004
+      // 			}
+      // 		},
+      // 		"protocol_max": "1.5",
+      // 		"protocol_min": "1.4",
+      // 		"pruning": null,
+      // 		"server_version": "Fulcrum 1.9.1"
+      // 	}
+      // }
+    } catch (e, s) {
+      debugPrint("Error connecting to $label: $e\n$s");
+    } finally {
+      // Close the socket, also on failure.
+      await _closeQuietly(socksSocket);
+    }
+  }
+
+  // Connect to bitcoin.stackwallet.com on port 50002 via socks socket.
+  //
+  // Note that this is an SSL example.
+  Future<void> testStackWalletSslConnection() => _testServerFeatures(
+    'bitcoin.stackwallet.com',
+    50002,
+    ssl: true,
+    label: 'bitcoin.stackwallet.com',
+  );
+
+  Future<void> testBitcoinOnionNodeConnection() async {
+    // Validate the onion address.
+    if (!bitcoinOnionController.text.contains(".onion")) {
+      debugPrint("Invalid onion address");
+      return;
+    } else if (!bitcoinOnionController.text.contains(":")) {
+      debugPrint("Invalid onion address (needs port)");
+      return;
+    }
+
+    final String domain = bitcoinOnionController.text.split(":").first;
+    final int? port = int.tryParse(bitcoinOnionController.text.split(":").last);
+    if (port == null) {
+      debugPrint("Invalid onion address (invalid port)");
+      return;
+    }
+
+    // Connect to the onion node via socks socket.
+    await _testServerFeatures(
+      domain,
+      port,
+      ssl: !domain.endsWith(".onion"),
+      label: 'Bitcoin onion node',
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     const spacerSmall = SizedBox(height: 10);
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Tor example'),
-      ),
+      appBar: AppBar(title: const Text('Tor example')),
       body: SingleChildScrollView(
         child: Container(
           padding: const EdgeInsets.all(10),
@@ -198,34 +324,31 @@ class _MyAppState extends State<Home> {
 
                             final time = DateTime.now();
 
-                            print("NOW: $time");
+                            debugPrint("NOW: $time");
 
                             await startTor();
 
-                            print("Start tor took "
-                                "${DateTime.now().difference(time).inSeconds} "
-                                "seconds");
+                            debugPrint(
+                              "Start tor took "
+                              "${DateTime.now().difference(time).inSeconds} "
+                              "seconds",
+                            );
 
-                            if (mounted) {
+                            if (context.mounted) {
                               Navigator.of(context).pop();
                             }
                           },
                     child: const Text("Start tor"),
                   ),
                   TextButton(
-                    onPressed: !torIsRunning
-                        ? null
-                        : () async {
-                            Tor.instance.disable();
-                            await Tor.instance.stop();
-                            setState(() {
-                              torIsRunning = false;
-                            });
-                          },
+                    // Also while starting, or when a failed release left the
+                    // native handles held, so the stop can be retried.
+                    onPressed: _tor.status == TorStatus.off ? null : stopTor,
                     child: const Text("Stop tor"),
                   ),
                 ],
               ),
+              if (torError != null) Text(torError!),
               Row(
                 children: [
                   // Host input field.
@@ -248,32 +371,40 @@ class _MyAppState extends State<Home> {
 
                             // Create HttpClient object
                             final client = HttpClient();
+                            try {
+                              // Assign connection factory.
+                              SocksTCPClient.assignToHttpClient(client, [
+                                ProxySettings(
+                                  InternetAddress.loopbackIPv4,
+                                  _tor.port,
+                                  password: null,
+                                ), // TODO get from tor's config file.
+                              ]);
 
-                            // Assign connection factory.
-                            SocksTCPClient.assignToHttpClient(client, [
-                              ProxySettings(InternetAddress.loopbackIPv4,
-                                  Tor.instance.port,
-                                  password:
-                                      null), // TODO get from tor's config file.
-                            ]);
+                              // GET request.
+                              final request = await client.getUrl(
+                                Uri.parse(hostController.text),
+                              );
+                              final response = await request.close();
 
-                            // GET request.
-                            final request = await client
-                                .getUrl(Uri.parse(hostController.text));
-                            final response = await request.close();
-
-                            // Print response.
-                            var responseString =
-                                await utf8.decodeStream(response);
-                            print(responseString);
-                            // If host input left to default icanhazip.com, a Tor
-                            // exit node IP should be printed to the console.
-                            //
-                            // https://check.torproject.org is also good for
-                            // doublechecking torability.
-
-                            // Close client
-                            client.close();
+                              // Print response.
+                              var responseString = await utf8.decodeStream(
+                                response,
+                              );
+                              debugPrint(responseString);
+                              // If host input left to default icanhazip.com, a Tor
+                              // exit node IP should be printed to the console.
+                              //
+                              // https://check.torproject.org is also good for
+                              // doublechecking torability.
+                            } catch (e, s) {
+                              debugPrint(
+                                "Error making proxied request: $e\n$s",
+                              );
+                            } finally {
+                              // Close client, also on failure.
+                              client.close();
+                            }
                           }
                         : null,
                     child: const Text("Make proxied request"),
@@ -282,57 +413,7 @@ class _MyAppState extends State<Home> {
               ),
               spacerSmall,
               TextButton(
-                onPressed: torIsRunning
-                    ? () async {
-                        // Instantiate a socks socket at localhost and on the port selected by the tor service.
-                        var socksSocket = await SOCKSSocket.create(
-                          proxyHost: InternetAddress.loopbackIPv4.address,
-                          proxyPort: Tor.instance.port,
-                          sslEnabled: true, // For SSL connections.
-                        );
-
-                        // Connect to the socks instantiated above.
-                        await socksSocket.connect();
-
-                        // Connect to bitcoin.stackwallet.com on port 50002 via socks socket.
-                        //
-                        // Note that this is an SSL example.
-                        await socksSocket.connectTo(
-                            'bitcoin.stackwallet.com', 50002);
-
-                        // Send a server features command to the connected socket, see method for more specific usage example..
-                        await socksSocket.sendServerFeaturesCommand();
-
-                        // You should see a server response printed to the console.
-                        //
-                        // Example response:
-                        // `flutter: secure responseData: {
-                        // 	"id": "0",
-                        // 	"jsonrpc": "2.0",
-                        // 	"result": {
-                        // 		"cashtokens": true,
-                        // 		"dsproof": true,
-                        // 		"genesis_hash": "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f",
-                        // 		"hash_function": "sha256",
-                        // 		"hosts": {
-                        // 			"bitcoin.stackwallet.com": {
-                        // 				"ssl_port": 50002,
-                        // 				"tcp_port": 50001,
-                        // 				"ws_port": 50003,
-                        // 				"wss_port": 50004
-                        // 			}
-                        // 		},
-                        // 		"protocol_max": "1.5",
-                        // 		"protocol_min": "1.4",
-                        // 		"pruning": null,
-                        // 		"server_version": "Fulcrum 1.9.1"
-                        // 	}
-                        // }
-
-                        // Close the socket.
-                        await socksSocket.close();
-                      }
-                    : null,
+                onPressed: torIsRunning ? testStackWalletSslConnection : null,
                 child: const Text(
                   "Connect to bitcoin.stackwallet.com:50002 (SSL) via socks socket",
                 ),
@@ -353,76 +434,11 @@ class _MyAppState extends State<Home> {
                   spacerSmall,
                   TextButton(
                     onPressed: torIsRunning
-                        ? () async {
-                            // Validate the onion address.www
-                            if (!onionController.text.contains(".onion")) {
-                              print("Invalid onion address");
-                              return;
-                            } else if (!onionController.text.contains(":")) {
-                              print("Invalid onion address (needs port)");
-                              return;
-                            }
-
-                            String domain =
-                                bitcoinOnionController.text.split(":").first;
-                            int port = int.parse(
-                                bitcoinOnionController.text.split(":").last);
-
-                            // Instantiate a socks socket at localhost and on the port selected by the tor service.
-                            var socksSocket = await SOCKSSocket.create(
-                              proxyHost: InternetAddress.loopbackIPv4.address,
-                              proxyPort: Tor.instance.port,
-                              sslEnabled: !domain
-                                  .endsWith(".onion"), // For SSL connections.
-                            );
-
-                            // Connect to the socks instantiated above.
-                            await socksSocket.connect();
-
-                            // Connect to onion node via socks socket.
-                            //
-                            // Note that this is an SSL example.
-                            await socksSocket.connectTo(domain, port);
-
-                            // Send a server features command to the connected socket, see method for more specific usage example..
-                            await socksSocket.sendServerFeaturesCommand();
-
-                            // You should see a server response printed to the console.
-                            //
-                            // Example response:
-                            // `flutter: secure responseData: {
-                            // 	"id": "0",
-                            // 	"jsonrpc": "2.0",
-                            // 	"result": {
-                            // 		"cashtokens": true,
-                            // 		"dsproof": true,
-                            // 		"genesis_hash": "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f",
-                            // 		"hash_function": "sha256",
-                            // 		"hosts": {
-                            // 			"bitcoin.stackwallet.com": {
-                            // 				"ssl_port": 50002,
-                            // 				"tcp_port": 50001,
-                            // 				"ws_port": 50003,
-                            // 				"wss_port": 50004
-                            // 			}
-                            // 		},
-                            // 		"protocol_max": "1.5",
-                            // 		"protocol_min": "1.4",
-                            // 		"pruning": null,
-                            // 		"server_version": "Fulcrum 1.9.1"
-                            // 	}
-                            // }
-
-                            // Close the socket.
-                            await socksSocket.close();
-                          }
-
+                        ? testBitcoinOnionNodeConnection
                         // A mutex should be added to this example to prevent
                         // multiple connections from being made at once.  TODO
                         : null,
-                    child: const Text(
-                      "Test Bitcoin onion node connection",
-                    ),
+                    child: const Text("Test Bitcoin onion node connection"),
                   ),
                 ],
               ),
@@ -440,12 +456,13 @@ class _MyAppState extends State<Home> {
                   ),
                   spacerSmall,
                   TextButton(
-                    onPressed:
-                        torIsRunning ? testMoneroOnionNodeConnection : null,
+                    onPressed: torIsRunning
+                        ? testMoneroOnionNodeConnection
+                        : null,
                     child: const Text("Test Monero onion node connection"),
                   ),
                 ],
-              )
+              ),
             ],
           ),
         ),

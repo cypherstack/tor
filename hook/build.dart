@@ -9,11 +9,7 @@ Future<void> main(List<String> args) async {
     if (!input.config.buildCodeAssets) return;
     if (await usePrebuilt(input, output)) return;
 
-    output.dependencies.addAll([
-      input.packageRoot.resolve('rust/Cargo.toml'),
-      input.packageRoot.resolve('rust/Cargo.lock'),
-      input.packageRoot.resolve('rust/rust-toolchain.toml'),
-    ]);
+    output.dependencies.addAll(await sourceDependencies(input.packageRoot));
 
     await const RustBuilder(
       assetName: 'tor_ffi_plugin_bindings_generated.dart',
