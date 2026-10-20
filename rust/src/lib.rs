@@ -160,14 +160,14 @@ pub unsafe extern "C" fn tor_start(
     let state_dir = unwrap_or_return!(CStr::from_ptr(state_dir).to_str(), err_ret);
     let cache_dir = unwrap_or_return!(CStr::from_ptr(cache_dir).to_str(), err_ret);
 
+    // Reserve the port before creating the client's threads, initializing
+    // storage or bootstrapping. On any later failure these listeners are
+    // dropped and the port is released.
+    let rt = unwrap_or_return!(proxy_runtime(), err_ret);
+    let (listeners, socks_port) = unwrap_or_return!(bind_localhost(rt, socks_port), err_ret);
+
     let client_runtime = unwrap_or_return!(ClientRuntime::new(), err_ret);
     let runtime = unwrap_or_return!(client_runtime.arti(), err_ret);
-
-    // Reserve the port before initializing storage or bootstrapping. On any
-    // later failure these listeners are dropped and the port is released.
-    let rt = unwrap_or_return!(proxy_runtime(), err_ret);
-    let (listeners, socks_port) =
-        unwrap_or_return!(bind_localhost(rt, &runtime, socks_port), err_ret);
 
     let mut cfg_builder = TorClientConfig::builder();
     cfg_builder
@@ -475,12 +475,10 @@ fn start_proxy(
 /// This blocks on `rt` so the listeners are registered with the reactor that
 /// later runs the accept loop, and so the caller sees a bind failure before
 /// the port is published.
-fn bind_localhost(
-    rt: &Runtime,
-    runtime: &TokioNativeTlsRuntime,
-    requested_port: u16,
-) -> io::Result<(Vec<Listener>, u16)> {
+fn bind_localhost(rt: &Runtime, requested_port: u16) -> io::Result<(Vec<Listener>, u16)> {
     rt.block_on(async {
+        // Arti binds through the runtime that is current, which is `rt`.
+        let runtime = TokioNativeTlsRuntime::current()?;
         let options = TcpListenOptions::default();
         let mut retries_left = if requested_port == 0 {
             IPV6_BIND_RETRIES
@@ -831,9 +829,8 @@ mod tests {
     fn bind_localhost_reports_an_occupied_port() {
         let occupied = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
         let port = occupied.local_addr().unwrap().port();
-        let arti_rt = TokioNativeTlsRuntime::create().unwrap();
 
-        let err = match bind_localhost(proxy_runtime().unwrap(), &arti_rt, port) {
+        let err = match bind_localhost(proxy_runtime().unwrap(), port) {
             Ok(_) => panic!("bound port {port} while it was occupied"),
             Err(err) => err,
         };
@@ -888,7 +885,6 @@ mod tests {
 
     #[test]
     fn bind_localhost_holds_the_port_until_dropped() {
-        let arti_rt = TokioNativeTlsRuntime::create().unwrap();
         let rt = proxy_runtime().unwrap();
 
         // A requested port must be honored and held. Another test may take the
@@ -900,7 +896,7 @@ mod tests {
                     .local_addr()
                     .unwrap()
                     .port();
-                match bind_localhost(rt, &arti_rt, port) {
+                match bind_localhost(rt, port) {
                     Ok((listeners, bound_port)) => {
                         assert_eq!(bound_port, port);
                         Some((listeners, port))
@@ -923,9 +919,8 @@ mod tests {
     fn stopping_the_proxy_releases_its_listeners_and_client_reference() {
         let root = scratch_dir("proxy-stop");
         let (client, runtime) = unbootstrapped_client(&root);
-        let arti_rt = runtime.arti().unwrap();
         let rt = proxy_runtime().unwrap();
-        let (listeners, port) = bind_localhost(rt, &arti_rt, 0).unwrap();
+        let (listeners, port) = bind_localhost(rt, 0).unwrap();
         let mut proxy = Box::new(ProxyHandle::new(Arc::clone(&client), listeners));
         proxy.start(rt);
         // Let the accept loop start polling its listeners.
@@ -1029,9 +1024,7 @@ mod tests {
 
     #[test]
     fn bind_localhost_allocates_and_reports_one_port() {
-        let arti_rt = TokioNativeTlsRuntime::create().unwrap();
-
-        let (listeners, port) = bind_localhost(proxy_runtime().unwrap(), &arti_rt, 0).unwrap();
+        let (listeners, port) = bind_localhost(proxy_runtime().unwrap(), 0).unwrap();
 
         assert_ne!(port, 0);
         assert!(
