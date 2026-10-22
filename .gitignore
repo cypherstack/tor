@@ -37,3 +37,6 @@ rust/target/CACHEDIR.TAG
 # Cargo output from building a vendored crate on its own.
 rust/patches/*/target/
 rust/patches/*/Cargo.lock
+
+# Per-checkout dnix build mode override (see README).
+.dnix-build
