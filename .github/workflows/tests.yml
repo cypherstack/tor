@@ -35,7 +35,7 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
         if: runner.os != 'Windows'
       - run: flutter pub get
-      - run: dart analyze lib hook tool test example
+      - run: dart analyze --fatal-infos lib hook tool test example
       # Prebuilt libraries exist once the lock's release is published from the
       # default branch of the repository dnix.json names; until then only
       # hosts with Nix can build them.
