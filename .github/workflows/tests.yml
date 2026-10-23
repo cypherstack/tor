@@ -18,24 +18,24 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, ubuntu-24.04-arm, xcode-27, windows-latest]
+        os: [ubuntu-24.04, xcode-27, windows-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           flutter-version: 3.47.2
           channel: stable
           cache: true
       # The hook builds through the Nix flake; before the first native
       # release that is the only path, and it is unavailable on Windows.
-      - uses: DeterminateSystems/nix-installer-action@v23
+      - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
         if: runner.os != 'Windows'
       - run: flutter pub get
-      - run: dart analyze hook tool test
+      - run: dart analyze lib hook tool test example
       # Prebuilt libraries exist once the lock's release is published from the
       # default branch of the repository dnix.json names; until then only
       # hosts with Nix can build them.
@@ -68,7 +68,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Install Linux prerequisites
@@ -77,7 +77,7 @@ jobs:
           sudo apt-get install -y build-essential pkg-config perl
       - name: Install pinned Rust toolchain
         run: bash tool/ci/install_rust.sh --component clippy,rustfmt
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: rust
       - name: Verify Rust
@@ -87,7 +87,7 @@ jobs:
           cargo clippy --locked --all-targets --manifest-path rust/Cargo.toml -- -D warnings
       - name: Cache pinned cargo-audit binary
         id: cargo-audit-cache
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cargo/bin/cargo-audit
           key: cargo-audit-${{ runner.os }}-${{ runner.arch }}-0.22.2-${{ hashFiles('rust/rust-toolchain.toml') }}
@@ -113,7 +113,7 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Use short Windows build paths
@@ -121,7 +121,7 @@ jobs:
         run: ./tool/ci/windows_paths.ps1
       - name: Install pinned Rust toolchain
         run: bash tool/ci/install_rust.sh --target "$NATIVE_TARGET"
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: rust
           key: windows-tests

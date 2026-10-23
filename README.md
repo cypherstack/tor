@@ -91,7 +91,7 @@ Only dynamic libraries are provided, without sanitizers:
 | Platform | Architectures | Minimum |
 | --- | --- | --- |
 | Android | armv7, arm64, x64 | API 24; supports 16 KiB pages |
-| iOS | arm64 device; arm64/x64 simulator | iOS 13 |
+| iOS | arm64 device; arm64/x64 simulator | iOS 13; arm64 simulator 14 |
 | macOS | arm64, x64 | macOS 11 |
 | Linux | x64, arm64 | glibc 2.28 |
 | Windows | x64 | MSVC runtime |
