@@ -1,17 +1,17 @@
 {
-  "release": "a58277144bcb",
-  "date": "2026-10-22",
+  "release": "cf8ba406c03c",
+  "date": "2026-10-23",
   "files": {
-    "aarch64-apple-darwin/libtor_ffi_plugin.dylib": "6fe5e646859757f69cdb353d109fb25142fdd6bb8f2ddfd9b4ae1690ecc0bd17",
-    "aarch64-apple-ios-sim/libtor_ffi_plugin.dylib": "b8c7163364ef74798c9d9226f3d50d2125b42b5cd06b4a36846ab681dd5d47b7",
-    "aarch64-apple-ios/libtor_ffi_plugin.dylib": "c97d74128ea8198cfc3e53f82c41020fe88cbf0cdcd376aa9cfa11a92edeee9f",
-    "aarch64-linux-android/libtor_ffi_plugin.so": "724b8959bb156cab220ca453ffcf828b0714d629bc00298520452dbac77d9239",
-    "aarch64-unknown-linux-gnu/libtor_ffi_plugin.so": "5a09fb8d6f9aa9ad8ae03d48ef3f678eb8fe10578f512e1b848bf34642141082",
-    "armv7-linux-androideabi/libtor_ffi_plugin.so": "de8ffd6664c09cf2b9873bc4f022d7ca30c3525281c12b19d3d5b7beac47085d",
+    "aarch64-apple-darwin/libtor_ffi_plugin.dylib": "f512791115a4ba6e1418a2e3a6c6272bebe9aaae254e2f8d106e531e7dca8217",
+    "aarch64-apple-ios-sim/libtor_ffi_plugin.dylib": "d7f5b1d6d1c0ad469c5b4ea0f70ba308ac10db423122ad6c123ce2618a989b23",
+    "aarch64-apple-ios/libtor_ffi_plugin.dylib": "66c24a9e41dc6770bc251c8c676423b505da9d1fb98d380c432a47933ed6b97a",
+    "aarch64-linux-android/libtor_ffi_plugin.so": "6e2eb2f975f03d5e1450dcf8a5d20e5f4a77d4216433549be0ba9414a955e237",
+    "aarch64-unknown-linux-gnu/libtor_ffi_plugin.so": "54fc79e5e572a7e1fc3c47d626fd551e65c22ee97999b49c841b05743c825515",
+    "armv7-linux-androideabi/libtor_ffi_plugin.so": "428b2debd0062edd534b8b6b5ed2b91b92870d32f4e56d1980283ced3f2df8a6",
     "x86_64-apple-darwin/libtor_ffi_plugin.dylib": "0d9721ced60ed08ef2df85fbbe298dd34cc144d7e111327dbc11b7c565506f5c",
     "x86_64-apple-ios/libtor_ffi_plugin.dylib": "36f5b5be3e6cdf4781beb360ae2135a0195f80e8427aa96ec2dcc9f1b534613c",
-    "x86_64-linux-android/libtor_ffi_plugin.so": "bbb79a3c5fb484d1bacb91fc46e54cc8604ea3f3a9df12772d1c06660ff35edc",
-    "x86_64-pc-windows-msvc/tor_ffi_plugin.dll": "f8a4fc7d8c571255dc9add08402a5795ff7a17bf32f23eebf9f9894b3c596783",
-    "x86_64-unknown-linux-gnu/libtor_ffi_plugin.so": "6d2b9d5f0f3471a008ed1b3eab5bc37f05abf7321ea7d4dfa2e91fa2ccb98f98"
+    "x86_64-linux-android/libtor_ffi_plugin.so": "248b795fd364afa01d1db0117e5c3fba260abda82923d9d81a037e53388182fb",
+    "x86_64-pc-windows-msvc/tor_ffi_plugin.dll": "a8eb27eb1d1c29e89af487c28a05ebfca0bf1a8f9a42b0ef53cc54bf6011f9b9",
+    "x86_64-unknown-linux-gnu/libtor_ffi_plugin.so": "9ab79a842ad3adca96b686012eec50ad70163e33f475bfdd545468565d19e692"
   }
 }
