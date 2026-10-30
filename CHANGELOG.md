@@ -9,6 +9,13 @@
   no longer read: pinning this package's commit pins its libraries.
 * Every change is built on four hosts, which must produce the bytes
   `dnix.lock` records; the default branch publishes the release it names.
+* Bump tokio to 1.54.1, async-compression to 0.4.51 (zstd 0.14 with
+  zstd-safe 8.2.0, liblzma in place of xz2) and ctutils to 0.4.7, which
+  clears the RustSec advisories against tokio 1.50, zstd-safe 7.1, zstd-sys
+  2.0 and ctutils 0.4.2. The statically linked xz library now comes from
+  liblzma-sys, the crate the new async-compression uses. The audit ignores
+  RUSTSEC-2026-0387 (crypto-bigint 0.5), an optional dependency no enabled
+  feature compiles.
 
 ## 0.2.0
 

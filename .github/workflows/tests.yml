@@ -94,13 +94,19 @@ jobs:
       - name: Install pinned cargo-audit
         if: steps.cargo-audit-cache.outputs.cache-hit != 'true'
         run: cargo install cargo-audit --version 0.22.2 --locked
+      # RUSTSEC-2026-0387 is crypto-bigint 0.5, which only the optional ECDSA
+      # support of ssh-key-fork-arti pulls in: no feature arti enables
+      # compiles it (cargo tree finds no path to it), and the elliptic-curve
+      # 0.13 series it is locked by cannot take the fixed 0.7 series. Drop
+      # the ignore once arti moves to elliptic-curve 0.14.
       - name: Audit Rust dependencies
         run: |
           cargo audit --file rust/Cargo.lock \
             --deny unsound \
             --deny yanked \
             --ignore RUSTSEC-2021-0145 \
-            --ignore RUSTSEC-2023-0071
+            --ignore RUSTSEC-2023-0071 \
+            --ignore RUSTSEC-2026-0387
 
   windows-tests:
     if: github.event_name == 'pull_request'
