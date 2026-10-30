@@ -19,7 +19,7 @@ arti-client = { version = "0.47.0", features = ["static", "onion-service-client"
 arti = { version = "2.7.0", features = ["experimental-api", "static"] }
 tor-rtcompat = { version = "0.47.0", features = ["static", "native-tls", "tokio"] }
 log = "0.4.20"
-lzma-sys = { version = "0.1.20", features = ["static"] }
+liblzma-sys = { version = "0.4.9", features = ["static"] }
 #android_log-sys = "0.3.1"
 rlimit = "0.10.1"
 anyhow = "1.0.79"

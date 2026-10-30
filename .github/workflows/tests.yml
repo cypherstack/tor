@@ -1,0 +1,137 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  flutter:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, xcode-27, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: 3.47.2
+          channel: stable
+          cache: true
+      # The hook builds through the Nix flake; before the first native
+      # release that is the only path, and it is unavailable on Windows.
+      - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
+        if: runner.os != 'Windows'
+      - run: flutter pub get
+      - run: dart analyze --fatal-infos lib hook tool test example
+      # Prebuilt libraries exist once the lock's release is published from the
+      # default branch of the repository dnix.json names; until then only
+      # hosts with Nix can build them.
+      - name: Check whether the lock's release is published
+        id: release
+        shell: bash
+        run: |
+          repository=$(jq -r .repository dnix.json | sed 's/\.git$//; s#/$##')
+          tag="native-$(jq -r .release dnix.lock)"
+          echo "published=$([ "$(curl -s -o /dev/null -w '%{http_code}' "$repository/releases/tag/$tag")" = 200 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+      - name: Choose the build mode
+        shell: bash
+        run: echo '${{ steps.release.outputs.published == 'true' && 'prebuilt' || 'source' }}' > .dnix-build
+      - name: Run flutter test
+        if: runner.os != 'Windows' || steps.release.outputs.published == 'true'
+        shell: bash
+        run: |
+          if ! flutter test 2>&1 | tee test.log; then
+            echo "::error::$(tail -c 1500 test.log | tr '\n' ' ')"
+            exit 1
+          fi
+      - name: Test example widgets
+        if: runner.os == 'Linux' && runner.arch == 'X64'
+        working-directory: example
+        run: flutter test
+
+  # The crate's own checks, as before the native library moved to dnix.
+  rust:
+    name: Rust tests, lints, and audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Linux prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config perl
+      - name: Install pinned Rust toolchain
+        run: bash tool/ci/install_rust.sh --component clippy,rustfmt
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: rust
+      - name: Verify Rust
+        run: |
+          cargo fmt --manifest-path rust/Cargo.toml --check
+          cargo test --locked --all-targets --manifest-path rust/Cargo.toml
+          cargo clippy --locked --all-targets --manifest-path rust/Cargo.toml -- -D warnings
+      - name: Cache pinned cargo-audit binary
+        id: cargo-audit-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cargo/bin/cargo-audit
+          key: cargo-audit-${{ runner.os }}-${{ runner.arch }}-0.22.2-${{ hashFiles('rust/rust-toolchain.toml') }}
+      - name: Install pinned cargo-audit
+        if: steps.cargo-audit-cache.outputs.cache-hit != 'true'
+        run: cargo install cargo-audit --version 0.22.2 --locked
+      # RUSTSEC-2026-0387 is crypto-bigint 0.5, which only the optional ECDSA
+      # support of ssh-key-fork-arti pulls in: no feature arti enables
+      # compiles it (cargo tree finds no path to it), and the elliptic-curve
+      # 0.13 series it is locked by cannot take the fixed 0.7 series. Drop
+      # the ignore once arti moves to elliptic-curve 0.14.
+      - name: Audit Rust dependencies
+        run: |
+          cargo audit --file rust/Cargo.lock \
+            --deny unsound \
+            --deny yanked \
+            --ignore RUSTSEC-2021-0145 \
+            --ignore RUSTSEC-2023-0071 \
+            --ignore RUSTSEC-2026-0387
+
+  windows-tests:
+    if: github.event_name == 'pull_request'
+    name: Windows time, IPv6, and file release tests
+    runs-on: windows-2025
+    timeout-minutes: 60
+    env:
+      NATIVE_TARGET: x86_64-pc-windows-msvc
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Use short Windows build paths
+        shell: pwsh
+        run: ./tool/ci/windows_paths.ps1
+      - name: Install pinned Rust toolchain
+        run: bash tool/ci/install_rust.sh --target "$NATIVE_TARGET"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: rust
+          key: windows-tests
+          cache-targets: false
+      - name: Test time limits, IPv6 fallback, and file release
+        run: bash tool/ci/test_windows.sh
+

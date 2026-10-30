@@ -1,0 +1,17 @@
+{
+  "release": "bdccea9785ab",
+  "date": "2026-10-30",
+  "files": {
+    "aarch64-apple-darwin/libtor_ffi_plugin.dylib": "5ad0c311ed4da79247c8e2dc645d8a9944431f77c0f45fb5b750a919e2d45d2c",
+    "aarch64-apple-ios-sim/libtor_ffi_plugin.dylib": "b76b916c06922fa185d9b1e8e696d8814aeac00a412c5bd5208d9887035daaa4",
+    "aarch64-apple-ios/libtor_ffi_plugin.dylib": "31ce202a0354b1a018247aa514d8273021dbfe3f52b3498cd7e4f2f45b219906",
+    "aarch64-linux-android/libtor_ffi_plugin.so": "841172a1bac55d8bffef8c79341a60d72c28024db488637e440d7b5f92987aec",
+    "aarch64-unknown-linux-gnu/libtor_ffi_plugin.so": "36e26458a52921db137c49a08a01e650ba1a3cd57067a7a613724e473efe9897",
+    "armv7-linux-androideabi/libtor_ffi_plugin.so": "fd67eb4ed118d8d834f9b564e2d33a3336be17a0d58a20ba41fe5f51ae31246c",
+    "x86_64-apple-darwin/libtor_ffi_plugin.dylib": "828edc5ead111d7441eef4f314fa71307031a95cfb433e32987fc59f81faf529",
+    "x86_64-apple-ios/libtor_ffi_plugin.dylib": "37cb0a4686e6b943099b04a6d32e8648b2861b004edf75e9c041e93dea61818c",
+    "x86_64-linux-android/libtor_ffi_plugin.so": "1bd6a8ac0df51b0c479d6c831a5ae790d720de2b82b18830c8755067001b43b4",
+    "x86_64-pc-windows-msvc/tor_ffi_plugin.dll": "269fc580023948afc0be640d19bbc419a8cb49689c071702de6f404b5d4feaf1",
+    "x86_64-unknown-linux-gnu/libtor_ffi_plugin.so": "63d545aa4840766791043f8e55c48e30c237445499600e1fdf661d07f370e12c"
+  }
+}

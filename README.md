@@ -10,16 +10,10 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 ## Getting started
 
-Source builds are the default. To use prebuilt libraries without installing Rust,
-see [Prebuilt libraries](#prebuilt-libraries).
-
-### [Install rust](https://www.rust-lang.org/tools/install)
-
-Use `rustup`, not `homebrew`.  The toolchain and cross-compilation targets pinned in `rust/rust-toolchain.toml` are installed automatically on first build.
-
-### Building
-
-The Rust library is built and bundled by Flutter's native assets support (see `hook/build.dart`), so just `flutter run` or build as usual.  Requires Flutter 3.47.2 or later; Android builds need NDK 27 or later.
+Requires Flutter 3.47.2 or later. Nothing else is needed to use the package:
+the build hook downloads the Rust library built for this version and checks
+its hash before Flutter bundles it, so `flutter run` and `flutter build` work
+as usual. See [Native library](#native-library) for building it yourself.
 
 ### Starting and stopping Tor
 
@@ -68,48 +62,59 @@ If startup and its cleanup both fail, the original startup exception and stack
 are preserved. The cleanup failure is printed with its stack and remains
 available as `lastCleanupError` and `lastCleanupStackTrace` until the next native start attempt.
 
-### Prebuilt libraries
+### Native library
 
-Copy the manifest URL and SHA-256 from a native release into your application's
-root `pubspec.yaml` (the workspace root for pub workspaces):
+The hook obtains the Rust library in one of three modes, chosen with the
+`build` user define in the consuming app's root `pubspec.yaml` (the workspace
+root for pub workspaces), or for this checkout with a `.dnix-build` file
+holding the mode:
 
 ```yaml
 hooks:
   user_defines:
     tor_ffi_plugin:
-      native_build: prebuilt
-      prebuilt_manifest_url: https://github.com/cypherstack/tor/releases/download/native-YOUR-RELEASE/manifest.json
-      prebuilt_manifest_sha256: "REPLACE_WITH_RELEASE_MANIFEST_SHA256"
+      build: prebuilt   # the default; or source, or dev
 ```
 
-Use the package revision named in the release. The hook verifies the manifest,
-native source fingerprint, and library size and checksum before bundling it.
-Missing or invalid downloads fail the build. Downloads require public HTTPS.
-Flutter can reuse the hook output until `flutter clean` removes it. The normal
-Flutter application build tools are still required. Omit these settings or use
-`native_build: source` to compile Rust locally.
+- `prebuilt` downloads the library of the release `dnix.lock` names and
+  verifies it against the hash recorded there. A mismatch is an error, never
+  a fallback. Downloads are cached by hash and need public HTTPS.
+- `source` builds the library with Nix, the same build CI uses, and verifies
+  it against the same hash. Needs Nix on Linux or an Apple Silicon Mac; the
+  Apple targets need Xcode 27.0.
+- `dev` builds with Nix but skips the Xcode pin and the hash check, for
+  working on the Rust code. The hook notices a `.dnix-build` file from its
+  next run on, so touch `dnix.json` after creating it.
 
-Prebuilts use dynamic linking without sanitizers and cover:
+Only dynamic libraries are provided, without sanitizers:
 
 | Platform | Architectures | Minimum |
 | --- | --- | --- |
 | Android | armv7, arm64, x64 | API 24; supports 16 KiB pages |
 | iOS | arm64 device; arm64/x64 simulator | iOS 13; arm64 simulator 14 |
 | macOS | arm64, x64 | macOS 11 |
-| Linux | x64; arm64 | glibc 2.35 (x64); 2.39 (arm64) |
+| Linux | x64, arm64 | glibc 2.28 |
 | Windows | x64 | MSVC runtime |
 
-Push a new `native-*` tag (for example `native-0.1.0-1`) to build and publish
-all targets. Release notes contain the hook settings above with the actual pin.
-Existing releases are not overwritten. Manual workflow runs on branches only
-upload artifacts. Pull requests run Rust/Dart tests, Windows time/IPv6/file-release
-tests, and example packaging checks; the full cross-build matrix runs for tags
-and manual dispatches. To generate the manifest locally, put the target-named
-libraries in `artifacts/`, run `flutter pub get`, then:
+The floors, the Rust and Xcode versions, and the location of the Rust
+workspace live in `dnix.json`.
 
-```sh
-dart --packages=.dart_tool/package_config.json tool/prebuilt_manifest.dart artifacts
-```
+#### Releases
+
+`dnix.lock` records the hash of every library the Rust source builds to and
+names the GitHub release, `native-<release>`, that holds those bytes. After
+changing the Rust code, run `dart tool/update_lock.dart` on a Mac with Nix
+and Xcode 27.0 and commit the lock with the change; without a Mac, push and
+copy the lock CI prints once every host is green. CI
+(`.github/workflows/native.yml`) builds on four hosts, fails if any host or
+the lock disagrees, and publishes the release when the lock reaches the
+default branch. Nothing is committed by CI, and old releases stay.
+
+Anyone can rebuild one platform with Nix and compare:
+`dart tool/verify_release.dart linux` (or android, windows, macos, ios, or a
+target triple), on Windows inside WSL2 for the non-Apple platforms. The build
+comes from the shared [dnix](https://github.com/cypherstack/dnix) package,
+whose documentation explains how the bytes stay identical across hosts.
 
 ## Development
 
@@ -124,6 +129,10 @@ Run the Rust tests with the pinned toolchain, then the offline Dart tests:
 (cd rust && cargo test --locked)
 flutter test
 ```
+
+Before the lock's release is published, or to test local Rust changes, the
+tests need the library built from source: `echo dev > .dnix-build` with Nix
+installed (`source` to also check the hash).
 
 The lifecycle regression also verifies stop/restart against the real Tor
 network. Enable it explicitly (it requires network access and can take several
