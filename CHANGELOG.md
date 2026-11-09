@@ -1,12 +1,17 @@
 ## Unreleased
 
+* Update dnix to support native Windows source and development builds through
+  WSL2, including the `wsl_distribution` user define and fixes for paths
+  containing percent escapes. Source builds still verify the existing
+  native-library hashes.
 * **Breaking change:** the native library now comes from
   [dnix](https://github.com/cypherstack/dnix). By default the build hook
   downloads the library of the release `dnix.lock` names and verifies its
   SHA-256; with the `build` user define set to `source` it builds the same
-  library with Nix, on Linux or an Apple Silicon Mac. The `native_build`,
-  `prebuilt_manifest_url` and `prebuilt_manifest_sha256` user defines are
-  no longer read: pinning this package's commit pins its libraries.
+  library with Nix, on Linux, an Apple Silicon Mac, or Windows via WSL2. The
+  `native_build`, `prebuilt_manifest_url` and `prebuilt_manifest_sha256` user
+  defines are no longer read: pinning this package's commit pins its
+  libraries.
 * Every change is built on four hosts, which must produce the bytes
   `dnix.lock` records; the default branch publishes the release it names.
 * Bump tokio to 1.54.1, async-compression to 0.4.51 (zstd 0.14 with

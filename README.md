@@ -80,11 +80,18 @@ hooks:
   verifies it against the hash recorded there. A mismatch is an error, never
   a fallback. Downloads are cached by hash and need public HTTPS.
 - `source` builds the library with Nix, the same build CI uses, and verifies
-  it against the same hash. Needs Nix on Linux or an Apple Silicon Mac; the
-  Apple targets need Xcode 27.0.
+  it against the same hash. Needs Nix on Linux, an Apple Silicon Mac,
+  or inside WSL2 on Windows; the Apple targets need Xcode 27.0.
 - `dev` builds with Nix but skips the Xcode pin and the hash check, for
   working on the Rust code. The hook notices a `.dnix-build` file from its
   next run on, so touch `dnix.json` after creating it.
+
+On Windows, install Nix in WSL2 and run Dart or Flutter from Windows.
+`source` and `dev` invoke `wsl.exe` using the default distribution. To
+select another distribution, add `wsl_distribution: Ubuntu-24.04` beside
+`build` in the package's user defines. Apple targets still require macOS.
+See [dnix's Windows setup](https://github.com/cypherstack/dnix/blob/main/doc/configuration.md#windows-source-builds)
+for installation and checkout requirements.
 
 Only dynamic libraries are provided, without sanitizers:
 
@@ -112,9 +119,10 @@ default branch. Nothing is committed by CI, and old releases stay.
 
 Anyone can rebuild one platform with Nix and compare:
 `dart tool/verify_release.dart linux` (or android, windows, macos, ios, or a
-target triple), on Windows inside WSL2 for the non-Apple platforms. The build
-comes from the shared [dnix](https://github.com/cypherstack/dnix) package,
-whose documentation explains how the bytes stay identical across hosts.
+target triple). Native Windows Dart invokes Nix inside WSL2 for non-Apple
+targets. The build comes from the shared
+[dnix](https://github.com/cypherstack/dnix) package, whose documentation
+explains how the bytes stay identical across hosts.
 
 ## Development
 
